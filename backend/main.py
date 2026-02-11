@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from backend.api import graphs, export, websocket, nodes
+from backend.api import graphs, export, websocket, nodes, examples
 from backend.core.storage import StorageManager
 from backend.core.renderer import Renderer, ExportQueue
 from backend.core.logging_config import setup_logging, get_logger
@@ -58,6 +58,7 @@ app.include_router(graphs.router)
 app.include_router(export.router)
 app.include_router(nodes.router)
 app.include_router(websocket.router)
+app.include_router(examples.router)
 
 # Mount temp files directory (using a temporary storage instance for directory path)
 _temp_storage = StorageManager()

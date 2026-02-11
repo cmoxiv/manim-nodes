@@ -25,7 +25,7 @@ class EdgeData(BaseModel):
 
 class Graph(BaseModel):
     """Complete graph structure representing a MANIM animation"""
-    id: str
+    id: str = Field(default="")
     name: str
     nodes: List[NodeData] = Field(default=[], max_length=200)
     edges: List[EdgeData] = Field(default=[], max_length=500)

@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import { Play, Pause, RotateCcw, Download } from 'lucide-react';
+import { Play, Pause, RotateCcw, Download, X } from 'lucide-react';
 import { usePreviewStore } from '../../store/usePreviewStore';
 import { useGraphStore } from '../../store/useGraphStore';
 import { usePreviewWebSocket } from '../../websocket/usePreviewSocket';
@@ -10,6 +10,7 @@ export default function AnimationPreview() {
     isRendering,
     videoUrl,
     error,
+    debugLog,
     isPlaying,
     setPlaying,
     setCurrentTime,
@@ -98,6 +99,25 @@ export default function AnimationPreview() {
           {isRendering ? 'Rendering...' : 'Render Preview'}
         </button>
       </div>
+
+      {debugLog.length > 0 && (
+        <div className="border-b border-gray-700 bg-gray-950 max-h-32 overflow-y-auto">
+          <div className="flex items-center justify-between px-3 py-1 border-b border-gray-800">
+            <span className="text-xs font-semibold text-yellow-400">Debug Output</span>
+            <button
+              onClick={() => usePreviewStore.getState().clearLog()}
+              className="p-0.5 hover:bg-gray-800 rounded"
+            >
+              <X size={12} className="text-gray-500" />
+            </button>
+          </div>
+          <div className="px-3 py-1 space-y-0.5">
+            {debugLog.map((msg, i) => (
+              <div key={i} className="text-xs font-mono text-yellow-300">{msg}</div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex items-center justify-center bg-black">
         {isRendering && (

@@ -152,6 +152,282 @@ class Vec3CombineNode(NodeBase):
         return "Math Ops"
 
 
+class NegateNode(NodeBase):
+    """Negate a number"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = -({{input_a}})'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"a": "Number"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Number"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+# ── Vector operations ──
+
+class Vec3AddNode(NodeBase):
+    """Add two vectors"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = (np.array({{input_a}}) + np.array({{input_b}})).tolist()'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"a": "Vec3", "b": "Vec3"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Vec3"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class Vec3SubtractNode(NodeBase):
+    """Subtract two vectors"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = (np.array({{input_a}}) - np.array({{input_b}})).tolist()'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"a": "Vec3", "b": "Vec3"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Vec3"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class Vec3ScaleNode(NodeBase):
+    """Multiply a vector by a scalar"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = (np.array({{input_vector}}) * {{input_scalar}}).tolist()'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"vector": "Vec3", "scalar": "Number"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Vec3"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class Vec3NegateNode(NodeBase):
+    """Negate a vector"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = (-np.array({{input_vector}})).tolist()'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"vector": "Vec3"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Vec3"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class Vec3DotNode(NodeBase):
+    """Dot product of two vectors"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = float(np.dot({{input_a}}, {{input_b}}))'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"a": "Vec3", "b": "Vec3"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Number"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class Vec3CrossNode(NodeBase):
+    """Cross product of two vectors"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = np.cross({{input_a}}, {{input_b}}).tolist()'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"a": "Vec3", "b": "Vec3"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Vec3"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class Vec3LengthNode(NodeBase):
+    """Length (magnitude) of a vector"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = float(np.linalg.norm({{input_vector}}))'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"vector": "Vec3"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Number"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class Vec3NormalizeNode(NodeBase):
+    """Normalize a vector to unit length"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'_v = np.array({{input_vector}}); {var_name} = (_v / (np.linalg.norm(_v) + 1e-10)).tolist()'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"vector": "Vec3"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Vec3"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+# ── Matrix operations ──
+
+class MatrixAddNode(NodeBase):
+    """Add two matrices"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = np.add({{input_a}}, {{input_b}})'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"a": "Matrix", "b": "Matrix"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Matrix"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class MatrixSubtractNode(NodeBase):
+    """Subtract two matrices"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = np.subtract({{input_a}}, {{input_b}})'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"a": "Matrix", "b": "Matrix"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Matrix"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class MatrixInverseNode(NodeBase):
+    """Inverse of a matrix"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = np.linalg.inv({{input_matrix}})'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"matrix": "Matrix"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Matrix"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class MatrixTransposeNode(NodeBase):
+    """Transpose of a matrix"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = np.transpose({{input_matrix}})'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"matrix": "Matrix"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Matrix"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class MatrixNegateNode(NodeBase):
+    """Negate a matrix"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = -{{input_matrix}}'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"matrix": "Matrix"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Matrix"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class MatrixDeterminantNode(NodeBase):
+    """Determinant of a matrix"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = float(np.linalg.det({{input_matrix}}))'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"matrix": "Matrix"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Number"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class MatrixVecMultiplyNode(NodeBase):
+    """Multiply a matrix by a vector"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = np.matmul({{input_matrix}}, {{input_vector}}).tolist()'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"matrix": "Matrix", "vector": "Vec3"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"result": "Vec3"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
 class MatrixNode(NodeBase):
     """Create a 4x4 transformation matrix"""
     # 4x4 matrix (identity matrix by default)
@@ -233,6 +509,109 @@ class MatrixScaleNode(NodeBase):
 
     def get_outputs(self) -> Dict[str, str]:
         return {"result": "Matrix"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class TranslateMatrixNode(NodeBase):
+    """Build a 4x4 translation matrix"""
+    translation: str = Field(default="[0, 0, 0]", description="Translation [x, y, z]")
+
+    def to_manim_code(self, var_name: str) -> str:
+        return (
+            f'_t = {{param_translation}}\n'
+            f'        {var_name} = np.array('
+            f'[[1, 0, 0, _t[0]], [0, 1, 0, _t[1]], [0, 0, 1, _t[2]], [0, 0, 0, 1]]'
+            f', dtype=float)'
+        )
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"param_translation": "Vec3"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"matrix": "Matrix"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class RotateMatrixNode(NodeBase):
+    """Build a 4x4 rotation matrix (axis-angle via Rodrigues' formula)"""
+    angle: str = Field(default="0", description="Angle in degrees")
+    axis: str = Field(default="[0, 0, 1]", description="Rotation axis [x, y, z]")
+
+    def to_manim_code(self, var_name: str) -> str:
+        lines = [
+            f'_a_{var_name} = np.radians({{param_angle}})',
+            f'_ax_{var_name} = np.array({{param_axis}}, dtype=float)',
+            f'_ax_{var_name} = _ax_{var_name} / (np.linalg.norm(_ax_{var_name}) + 1e-10)',
+            f'_c, _s = np.cos(_a_{var_name}), np.sin(_a_{var_name})',
+            f'_x, _y, _z = _ax_{var_name}',
+            f'_R = np.array(['
+            f'[_c + _x*_x*(1-_c), _x*_y*(1-_c) - _z*_s, _x*_z*(1-_c) + _y*_s],'
+            f' [_y*_x*(1-_c) + _z*_s, _c + _y*_y*(1-_c), _y*_z*(1-_c) - _x*_s],'
+            f' [_z*_x*(1-_c) - _y*_s, _z*_y*(1-_c) + _x*_s, _c + _z*_z*(1-_c)]])',
+            f'{var_name} = np.eye(4)',
+            f'{var_name}[:3, :3] = _R',
+        ]
+        return '\n        '.join(lines)
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {
+            "param_angle": "Number",
+            "param_axis": "Vec3",
+        }
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"matrix": "Matrix"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class ScaleMatrixNode(NodeBase):
+    """Build a 4x4 scale matrix"""
+    scale: str = Field(default="[1, 1, 1]", description="Scale [x, y, z]")
+
+    def to_manim_code(self, var_name: str) -> str:
+        return (
+            f'_s = {{param_scale}}\n'
+            f'        {var_name} = np.array('
+            f'[[_s[0], 0, 0, 0], [0, _s[1], 0, 0], [0, 0, _s[2], 0], [0, 0, 0, 1]]'
+            f', dtype=float)'
+        )
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"param_scale": "Vec3"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"matrix": "Matrix"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class ComposeMatrixNode(NodeBase):
+    """Compose up to 4 transformation matrices (multiplied left to right)"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = {{input_m1}}'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {
+            "m1": "Matrix",
+            "m2": "Matrix",
+            "m3": "Matrix",
+            "m4": "Matrix",
+        }
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"matrix": "Matrix"}
 
     @classmethod
     def get_category(cls) -> str:

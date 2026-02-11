@@ -6,7 +6,7 @@ import { Graph } from '../types/graph';
 export function usePreviewWebSocket() {
   const ws = useRef<ReconnectingWebSocket | null>(null);
   const [connected, setConnected] = useState(false);
-  const { setRendering, setVideoUrl, setError, addLog, clearLog, reset, setGeneratedCode } = usePreviewStore();
+  const { setRendering, setVideoUrl, setError, addLog, addDebugLog, clearLog, reset, setGeneratedCode } = usePreviewStore();
 
   useEffect(() => {
     // Determine WebSocket URL
@@ -38,7 +38,11 @@ export function usePreviewWebSocket() {
             break;
 
           case 'progress':
-            addLog(message.message);
+            if (message.message.startsWith('[DEBUG] ')) {
+              addDebugLog(message.message.slice(8));
+            } else {
+              addLog(message.message);
+            }
             break;
 
           case 'complete':
@@ -82,7 +86,7 @@ export function usePreviewWebSocket() {
       clearInterval(pingInterval);
       ws.current?.close();
     };
-  }, [setRendering, setVideoUrl, setError, addLog, setGeneratedCode]);
+  }, [setRendering, setVideoUrl, setError, addLog, addDebugLog, setGeneratedCode]);
 
   const sendRenderRequest = (graph: Graph) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {

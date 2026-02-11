@@ -1,5 +1,5 @@
 from .base import NodeBase
-from .shapes import CircleNode, SquareNode, RectangleNode, LineNode, TextNode, ArrowNode, TriangleNode, RegularPolygonNode, RightTriangleNode, IsoscelesTriangleNode
+from .shapes import CircleNode, SquareNode, RectangleNode, LineNode, TextNode, ArrowNode, TriangleNode, RegularPolygonNode, RightTriangleNode, IsoscelesTriangleNode, LineLabelNode
 from .animations import (
     FadeInNode, FadeOutNode, ShowNode, WriteNode, CreateNode,
     MorphNode, RotateNode, ScaleNode, MoveToNode, SequenceNode, AnimationGroupNode,
@@ -12,21 +12,29 @@ from .animations import (
     # Movement
     MoveAlongPathNode,
     # Transform
-    ReplacementTransformNode, TransformFromCopyNode, FadeTransformNode,
-    TransformMatchingShapesNode, TransformMatchingTexNode, FadeToColorNode, ShrinkToCenterNode,
+    ReplacementMorphNode, MorphFromCopyNode, FadeMorphNode,
+    MorphMatchingShapesNode, MorphMatchingTexNode, FadeToColorNode, ShrinkToCenterNode,
     # Other
     BroadcastNode,
+    SquareFromEdgeNode,
 )
-from .math import AxesNode, NumberPlaneNode, MathTexNode, VectorNode, DotNode, LinePlotNode, PolylineNode, DisplayMatrixNode
-from .utilities import GroupNode, TextCharacterNode, TransformNode
+from .math import AxesNode, NumberPlaneNode, MathTexNode, VectorNode, DotNode, LinePlotNode, PolylineNode, ParametricFunctionNode, DisplayMatrixNode
+from .utilities import DebugPrintNode, GroupNode, TextCharacterNode, PythonCodeNode, TransformNode, TransformInPlaceNode, ExtractEdgesNode, ExposeParametersNode
 from .shapes3d import SphereNode, CubeNode, ConeNode, CylinderNode, TorusNode, Axes3DNode
 from .camera import (
     SetCameraOrientationNode, MoveCameraNode, ZoomCameraNode,
 )
 from .math_ops import (
-    AddNode, SubtractNode, MultiplyNode, DivideNode, NumberNode, Vec3Node,
-    Vec3SplitNode, Vec3CombineNode,
-    MatrixNode, MatrixMultiplyNode, MatrixScaleNode, ColorNode
+    AddNode, SubtractNode, MultiplyNode, DivideNode, NegateNode,
+    NumberNode, Vec3Node, Vec3SplitNode, Vec3CombineNode,
+    Vec3AddNode, Vec3SubtractNode, Vec3ScaleNode, Vec3NegateNode,
+    Vec3DotNode, Vec3CrossNode, Vec3LengthNode, Vec3NormalizeNode,
+    MatrixNode, MatrixMultiplyNode, MatrixScaleNode,
+    MatrixAddNode, MatrixSubtractNode, MatrixInverseNode,
+    MatrixTransposeNode, MatrixNegateNode, MatrixDeterminantNode,
+    MatrixVecMultiplyNode,
+    TranslateMatrixNode, RotateMatrixNode, ScaleMatrixNode, ComposeMatrixNode,
+    ColorNode,
 )
 
 # Registry of all available node types
@@ -74,15 +82,16 @@ NODE_REGISTRY = {
     # Movement animations
     "MoveAlongPath": MoveAlongPathNode,
     # Transform animations
-    "ReplacementTransform": ReplacementTransformNode,
-    "TransformFromCopy": TransformFromCopyNode,
-    "FadeTransform": FadeTransformNode,
-    "TransformMatchingShapes": TransformMatchingShapesNode,
-    "TransformMatchingTex": TransformMatchingTexNode,
+    "ReplacementMorph": ReplacementMorphNode,
+    "MorphFromCopy": MorphFromCopyNode,
+    "FadeMorph": FadeMorphNode,
+    "MorphMatchingShapes": MorphMatchingShapesNode,
+    "MorphMatchingTex": MorphMatchingTexNode,
     "FadeToColor": FadeToColorNode,
     "ShrinkToCenter": ShrinkToCenterNode,
     # Other animations
     "Broadcast": BroadcastNode,
+    "SquareFromEdge": SquareFromEdgeNode,
     "Axes": AxesNode,
     "NumberPlane": NumberPlaneNode,
     "MathTex": MathTexNode,
@@ -91,10 +100,18 @@ NODE_REGISTRY = {
     "DisplayMatrix": DisplayMatrixNode,
     "LinePlot": LinePlotNode,
     "Polyline": PolylineNode,
+    "ParametricFunction": ParametricFunctionNode,
     # Utilities
+    "DebugPrint": DebugPrintNode,
     "Group": GroupNode,
     "TextCharacter": TextCharacterNode,
+    "PythonCode": PythonCodeNode,
     "Transform": TransformNode,
+    "TransformInPlace": TransformInPlaceNode,
+    "ExtractEdges": ExtractEdgesNode,
+    "ExposeParameters": ExposeParametersNode,
+    # Text & Math (additional)
+    "LineLabel": LineLabelNode,
     # 3D Shapes
     "Sphere": SphereNode,
     "Cube": CubeNode,
@@ -118,7 +135,30 @@ NODE_REGISTRY = {
     "Matrix": MatrixNode,
     "MatrixMultiply": MatrixMultiplyNode,
     "MatrixScale": MatrixScaleNode,
+    "TranslateMatrix": TranslateMatrixNode,
+    "RotateMatrix": RotateMatrixNode,
+    "ScaleMatrix": ScaleMatrixNode,
+    "ComposeMatrix": ComposeMatrixNode,
     "Color": ColorNode,
+    # Scalar Operations
+    "Negate": NegateNode,
+    # Vector Operations
+    "Vec3Add": Vec3AddNode,
+    "Vec3Subtract": Vec3SubtractNode,
+    "Vec3Scale": Vec3ScaleNode,
+    "Vec3Negate": Vec3NegateNode,
+    "Vec3Dot": Vec3DotNode,
+    "Vec3Cross": Vec3CrossNode,
+    "Vec3Length": Vec3LengthNode,
+    "Vec3Normalize": Vec3NormalizeNode,
+    # Matrix Operations
+    "MatrixAdd": MatrixAddNode,
+    "MatrixSubtract": MatrixSubtractNode,
+    "MatrixInverse": MatrixInverseNode,
+    "MatrixTranspose": MatrixTransposeNode,
+    "MatrixNegate": MatrixNegateNode,
+    "MatrixDeterminant": MatrixDeterminantNode,
+    "MatrixVecMultiply": MatrixVecMultiplyNode,
 }
 
 __all__ = [
@@ -167,15 +207,16 @@ __all__ = [
     # Movement animations
     "MoveAlongPathNode",
     # Transform animations
-    "ReplacementTransformNode",
-    "TransformFromCopyNode",
-    "FadeTransformNode",
-    "TransformMatchingShapesNode",
-    "TransformMatchingTexNode",
+    "ReplacementMorphNode",
+    "MorphFromCopyNode",
+    "FadeMorphNode",
+    "MorphMatchingShapesNode",
+    "MorphMatchingTexNode",
     "FadeToColorNode",
     "ShrinkToCenterNode",
     # Other animations
     "BroadcastNode",
+    "SquareFromEdgeNode",
     "AxesNode",
     "NumberPlaneNode",
     "MathTexNode",
@@ -184,10 +225,17 @@ __all__ = [
     "DisplayMatrixNode",
     "LinePlotNode",
     "PolylineNode",
+    "ParametricFunctionNode",
     # Utilities
+    "DebugPrintNode",
     "GroupNode",
     "TextCharacterNode",
+    "PythonCodeNode",
     "TransformNode",
+    "TransformInPlaceNode",
+    "ExtractEdgesNode",
+    "ExposeParametersNode",
+    "LineLabelNode",
     # 3D Shapes
     "SphereNode",
     "CubeNode",
@@ -211,5 +259,28 @@ __all__ = [
     "MatrixNode",
     "MatrixMultiplyNode",
     "MatrixScaleNode",
+    "TranslateMatrixNode",
+    "RotateMatrixNode",
+    "ScaleMatrixNode",
+    "ComposeMatrixNode",
     "ColorNode",
+    # Scalar Operations
+    "NegateNode",
+    # Vector Operations
+    "Vec3AddNode",
+    "Vec3SubtractNode",
+    "Vec3ScaleNode",
+    "Vec3NegateNode",
+    "Vec3DotNode",
+    "Vec3CrossNode",
+    "Vec3LengthNode",
+    "Vec3NormalizeNode",
+    # Matrix Operations
+    "MatrixAddNode",
+    "MatrixSubtractNode",
+    "MatrixInverseNode",
+    "MatrixTransposeNode",
+    "MatrixNegateNode",
+    "MatrixDeterminantNode",
+    "MatrixVecMultiplyNode",
 ]

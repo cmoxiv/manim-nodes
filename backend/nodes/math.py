@@ -76,7 +76,7 @@ class MathTexNode(NodeBase):
     """Creates mathematical text (LaTeX)"""
     order: int = Field(default=0, ge=-100, le=100, description="Creation order (lower = created first)")
     tex: str = Field(default="x^2 + y^2 = r^2")
-    font_size: str = Field(default="48.0")
+    font_size: str = Field(default="72.0")
     color: str = Field(default="#FFFFFF")
     z_index: str = Field(default="0", description="Draw order (higher = front)")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
@@ -253,6 +253,54 @@ class PolylineNode(NodeBase):
         return schema
 
 
+class ParametricFunctionNode(NodeBase):
+    """Creates a parametric curve from a Python function f(t) → [x, y, z]"""
+    order: int = Field(default=0, ge=-100, le=100, description="Creation order (lower = created first)")
+    code: str = Field(
+        default="import numpy as np\nx = np.cos(t)\ny = np.sin(t)\nz = 0\nreturn [x, y, z]",
+        description="Python code for f(t). Must return [x, y, z]."
+    )
+    t_range_min: str = Field(default="0", description="t range minimum")
+    t_range_max: str = Field(default="2*PI", description="t range maximum")
+    color: str = Field(default="#58C4DD")
+    stroke_width: str = Field(default="4.0")
+    z_index: str = Field(default="0", description="Draw order (higher = front)")
+    position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+
+    def to_manim_code(self, var_name: str) -> str:
+        # Indent user code for function body
+        indented_code = "\n".join(
+            f"        {line}" for line in self.code.splitlines()
+        )
+        color = f'"{self.color}"' if self.color.startswith('#') else self.color
+        code = f"""def _func_{var_name}(t):
+{indented_code}
+        {var_name} = ParametricFunction(_func_{var_name}, t_range=[{self.t_range_min}, {self.t_range_max}], color={color}, stroke_width={self.stroke_width})"""
+        if self.z_index != "0":
+            code += f'.set_z_index({self.z_index})'
+        code += f'.move_to({{param_position}})'
+        return code
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {
+            "param_position": "Vec3",
+        }
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"shape": "Mobject"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Text & Math"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "code" in schema["properties"]:
+            schema["properties"]["code"]["format"] = "code"
+        return schema
+
+
 class DisplayMatrixNode(NodeBase):
     """Displays a Matrix or Vec3 as a visual Manim Matrix mobject"""
     order: int = Field(default=0, ge=-100, le=100, description="Creation order (lower = created first)")
@@ -263,10 +311,11 @@ class DisplayMatrixNode(NodeBase):
     z_index: str = Field(default="0", description="Draw order (higher = front)")
 
     def to_manim_code(self, var_name: str) -> str:
+        fmt = 'element_to_mobject=lambda e: DecimalNumber(e, num_decimal_places=3)'
         if self.mode == "vector":
-            code = f'{var_name} = Matrix([[v] for v in {{param_vector}}]).scale({self.scale})'
+            code = f'{var_name} = Matrix([[v] for v in {{param_vector}}], {fmt}).scale({self.scale})'
         else:
-            code = f'{var_name} = Matrix({{param_matrix}}).scale({self.scale})'
+            code = f'{var_name} = Matrix({{param_matrix}}, {fmt}).scale({self.scale})'
         if self.z_index != "0":
             code += f'.set_z_index({self.z_index})'
         return code

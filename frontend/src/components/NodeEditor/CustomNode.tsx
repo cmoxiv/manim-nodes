@@ -1,5 +1,5 @@
-import { memo, useState } from 'react';
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
+import { memo, useState, useEffect } from 'react';
+import { Handle, Position, NodeProps, useReactFlow, useUpdateNodeInternals } from 'reactflow';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 // Helper function to get handle style based on type
@@ -116,15 +116,16 @@ function getHandleStyle(type: string, isSource: boolean = false) {
 
 function CustomNode({ data, selected, id }: NodeProps) {
   const { setNodes, getNodes, getEdges } = useReactFlow();
+  const updateNodeInternals = useUpdateNodeInternals();
   const hasInputs = data.inputs && Object.keys(data.inputs).length > 0;
-  const hasOutputs = data.outputs && Object.keys(data.outputs).length > 0;
+
   const [showParams, setShowParams] = useState(false); // Collapsed by default
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(data.name || '');
 
   // Check if node has parameters to show
   const parameters = Object.entries(data).filter(([key]) =>
-    !['type', 'category', 'inputs', 'outputs', 'error', 'label', 'name'].includes(key)
+    !['type', 'category', 'inputs', 'outputs', 'error', 'label', 'name', 'copy', 'animate', 'write_label'].includes(key)
   );
   const hasParameters = parameters.length > 0;
 
@@ -151,6 +152,31 @@ function CustomNode({ data, selected, id }: NodeProps) {
   };
 
   const colorPreview = data.type === 'Color' ? getColorPreview() : '';
+
+  // For ExposeParameters: only show selected param outputs + shape passthrough
+  const getVisibleOutputs = (): Record<string, string> => {
+    if (data.type !== 'ExposeParameters' || !data.outputs) return data.outputs;
+
+    const selected = new Set(
+      [data.param_1, data.param_2, data.param_3].filter((p: string) => p && p !== 'none')
+    );
+
+    const filtered: Record<string, string> = { shape: data.outputs.shape };
+    for (const key of selected) {
+      if (data.outputs[key]) filtered[key] = data.outputs[key];
+    }
+    return filtered;
+  };
+
+  const visibleOutputs = getVisibleOutputs();
+  const hasOutputs = visibleOutputs && Object.keys(visibleOutputs).length > 0;
+
+  // Notify React Flow when handles change (needed for dynamic outputs like ExposeParameters)
+  const outputKeys = Object.keys(visibleOutputs || {}).join(',');
+  const inputKeys = Object.keys(data.inputs || {}).join(',');
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [outputKeys, inputKeys, id, updateNodeInternals]);
 
   // Get summary info to display in header
   const getSummaryInfo = () => {
@@ -191,7 +217,7 @@ function CustomNode({ data, selected, id }: NodeProps) {
     }
 
     // Animations: Show run_time
-    if (['FadeIn', 'FadeOut', 'Create', 'Write', 'Rotate', 'Scale', 'MoveTo', 'Morph'].includes(type)) {
+    if (['FadeIn', 'FadeOut', 'Create', 'Write', 'Rotate', 'Scale', 'MoveTo', 'Morph', 'SquareFromEdge'].includes(type)) {
       const runTime = data.run_time ?? '1.0';
       return `${runTime}s`;
     }
@@ -227,6 +253,10 @@ function CustomNode({ data, selected, id }: NodeProps) {
   const isAnimation = nodeCategory === 'Animations';
   const isCamera = nodeCategory === 'Camera';
 
+  // Nodes that need double height (many handles)
+  const tallNodeTypes = ['AnimationGroup', 'Sequence'];
+  const isTallNode = tallNodeTypes.includes(data.type);
+
   // Color scheme based on category
   const bgColor = isShapes2D ? 'bg-blue-900' :
                   isShapes3D ? 'bg-cyan-900' :
@@ -249,6 +279,7 @@ function CustomNode({ data, selected, id }: NodeProps) {
         ${borderColor}
         ${data.error ? 'border-red-500' : ''}
         min-w-[150px]
+        ${isTallNode ? 'min-h-[160px]' : data.type === 'TransformInPlace' ? 'min-h-[100px]' : ''}
       `}
     >
       {/* Input handles */}
@@ -359,6 +390,30 @@ function CustomNode({ data, selected, id }: NodeProps) {
           )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Animate toggle for animation nodes */}
+          {isAnimation && data.animate !== undefined && (
+            <label className="flex items-center gap-0.5 cursor-pointer" title="Animate (True) or apply instantly (False)">
+              <input type="checkbox" checked={data.animate ?? true}
+                onChange={(e) => updateNodeData('animate', e.target.checked)} className="w-3 h-3" />
+              <span className="text-[10px] text-gray-400">anim</span>
+            </label>
+          )}
+          {/* Copy toggle for animation nodes */}
+          {isAnimation && data.copy !== undefined && (
+            <label className="flex items-center gap-0.5 cursor-pointer" title="Animate a copy (preserves original)">
+              <input type="checkbox" checked={data.copy || false}
+                onChange={(e) => updateNodeData('copy', e.target.checked)} className="w-3 h-3" />
+              <span className="text-[10px] text-gray-400">cp</span>
+            </label>
+          )}
+          {/* Write-label toggle for nodes with labels */}
+          {data.write_label !== undefined && (
+            <label className="flex items-center gap-0.5 cursor-pointer" title="Auto-add label to scene">
+              <input type="checkbox" checked={data.write_label || false}
+                onChange={(e) => updateNodeData('write_label', e.target.checked)} className="w-3 h-3" />
+              <span className="text-[10px] text-gray-400">lbl</span>
+            </label>
+          )}
           {/* Show creation order badge if exists */}
           {data.order !== undefined && data.order !== 0 && (
             <div className="px-2 py-0.5 bg-blue-500 text-white text-xs font-bold rounded-full" title="Creation order">
@@ -418,7 +473,7 @@ function CustomNode({ data, selected, id }: NodeProps) {
           {/* Regular parameters (skip matrix fields if Matrix node) */}
           {Object.entries(data).map(([key, value]) => {
             // Skip internal properties and name (shown in header)
-            if (['type', 'category', 'inputs', 'outputs', 'error', 'label', 'name'].includes(key)) {
+            if (['type', 'category', 'inputs', 'outputs', 'error', 'label', 'name', 'copy', 'animate', 'write_label'].includes(key)) {
               return null;
             }
 
@@ -430,13 +485,17 @@ function CustomNode({ data, selected, id }: NodeProps) {
             if (data.type === 'Transform' && key.startsWith('m') && key.length === 3) {
               return null;
             }
+            // Skip param selectors for ExposeParameters (use Inspector dropdowns)
+            if (data.type === 'ExposeParameters' && key.startsWith('param_')) {
+              return null;
+            }
 
             const isBoolean = typeof value === 'boolean';
             const isColor = key.includes('color') || key.includes('Color');
 
             return (
-              <div key={key} className="flex flex-col gap-1">
-                <label className="text-xs text-gray-400 capitalize">
+              <div key={key} className="flex items-center gap-2">
+                <label className="text-xs text-gray-400 capitalize whitespace-nowrap w-16 text-right flex-shrink-0">
                   {key.replace(/_/g, ' ')}
                 </label>
                 {isBoolean ? (
@@ -455,7 +514,7 @@ function CustomNode({ data, selected, id }: NodeProps) {
                     onChange={(e) => {
                       updateNodeData(key, e.target.value);
                     }}
-                    className="w-full h-8 rounded border border-gray-600 bg-gray-700"
+                    className="w-full h-6 rounded border border-gray-600 bg-gray-700"
                   />
                 ) : (
                   <input
@@ -464,7 +523,7 @@ function CustomNode({ data, selected, id }: NodeProps) {
                     onChange={(e) => {
                       updateNodeData(key, e.target.value);
                     }}
-                    className="w-full px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white font-mono"
+                    className="flex-1 min-w-0 px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white font-mono"
                   />
                 )}
               </div>
@@ -475,9 +534,9 @@ function CustomNode({ data, selected, id }: NodeProps) {
 
       {/* Output handles */}
       {hasOutputs &&
-        Object.entries(data.outputs).map(([name, type], index) => {
+        Object.entries(visibleOutputs).map(([name, type], index) => {
           // Regular output handles (right side)
-          const topPosition = ((index + 1) / (Object.keys(data.outputs).length + 1)) * 100;
+          const topPosition = ((index + 1) / (Object.keys(visibleOutputs).length + 1)) * 100;
 
           return (
             <div key={name} style={{ position: 'absolute', right: '-8px', top: `${topPosition}%`, transform: 'translateY(-50%)' }}>

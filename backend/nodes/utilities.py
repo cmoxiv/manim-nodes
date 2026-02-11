@@ -3,6 +3,26 @@ from typing import Dict
 from .base import NodeBase
 
 
+class DebugPrintNode(NodeBase):
+    """Print the value of an input during rendering"""
+    label: str = Field(default="", description="Label prefix for the output")
+
+    def to_manim_code(self, var_name: str) -> str:
+        escaped = self.label.replace('"', '\\"')
+        prefix = f'{escaped}: ' if escaped else ''
+        return f'print("[DEBUG] {prefix}" + str({{input_value}}))'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"value": "Any"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Utilities"
+
+
 class GroupNode(NodeBase):
     """Group multiple shapes together"""
     pivot: str = Field(
@@ -20,6 +40,11 @@ class GroupNode(NodeBase):
             "obj3": "Mobject",
             "obj4": "Mobject",
             "obj5": "Mobject",
+            "obj6": "Mobject",
+            "obj7": "Mobject",
+            "obj8": "Mobject",
+            "obj9": "Mobject",
+            "obj10": "Mobject",
         }
 
     def get_outputs(self) -> Dict[str, str]:
@@ -66,6 +91,195 @@ class TextCharacterNode(NodeBase):
         if "properties" in schema and "mode" in schema["properties"]:
             schema["properties"]["mode"]["enum"] = ["index", "letter"]
         return schema
+
+
+class PythonCodeNode(NodeBase):
+    """Inject custom Python code into the generated scene"""
+    code: str = Field(
+        default="def my_func(x):\n    return x ** 2",
+        description="Python code to inject"
+    )
+
+    def to_manim_code(self, var_name: str) -> str:
+        return self.code
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Utilities"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "code" in schema["properties"]:
+            schema["properties"]["code"]["format"] = "code"
+        return schema
+
+
+class ExtractEdgesNode(NodeBase):
+    """Extract edges from a polygon as individual Line objects"""
+
+    def to_manim_code(self, var_name: str) -> str:
+        lines = []
+        lines.append(f'_verts_{var_name} = {{input_mobject}}.get_vertices()')
+        lines.append(f'_n_{var_name} = len(_verts_{var_name})')
+        for i in range(6):
+            lines.append(
+                f'{var_name}_side_{i+1} = Line(_verts_{var_name}[{i}], _verts_{var_name}[{i+1} % _n_{var_name}], '
+                f'color={{input_mobject}}.get_color(), stroke_width={{input_mobject}}.get_stroke_width()) '
+                f'if _n_{var_name} >= {i+2} else Dot(ORIGIN).set_opacity(0)'
+            )
+        lines.append(
+            f'{var_name}_edges = VGroup(*[Line(_verts_{var_name}[i], _verts_{var_name}[(i+1) % _n_{var_name}], '
+            f'color={{input_mobject}}.get_color(), stroke_width={{input_mobject}}.get_stroke_width()) '
+            f'for i in range(_n_{var_name})])'
+        )
+        # Set outward-facing label directions (perpendicular to each edge, oriented outward)
+        lines.append(f'_centroid_{var_name} = np.mean(_verts_{var_name}, axis=0)')
+        for i in range(6):
+            lines.append(
+                f'if isinstance({var_name}_side_{i+1}, Line): '
+                f'_ed = _verts_{var_name}[{i+1} % _n_{var_name}] - _verts_{var_name}[{i}]; '
+                f'_perp = np.array([-_ed[1], _ed[0], 0]); '
+                f'_perp = _perp / (np.linalg.norm(_perp) + 1e-10); '
+                f'_mid = (_verts_{var_name}[{i}] + _verts_{var_name}[{i+1} % _n_{var_name}]) / 2; '
+                f'{var_name}_side_{i+1}._label_direction = -_perp if np.dot(_perp, _centroid_{var_name} - _mid) > 0 else _perp'
+            )
+        return '\n        '.join(lines)
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"mobject": "Mobject"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {
+            "side_1": "Mobject",
+            "side_2": "Mobject",
+            "side_3": "Mobject",
+            "side_4": "Mobject",
+            "side_5": "Mobject",
+            "side_6": "Mobject",
+            "edges": "Mobject",
+        }
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Utilities"
+
+
+class ExposeParametersNode(NodeBase):
+    """Expose any shape's construction and runtime parameters as typed outputs"""
+    param_1: str = Field(default="none", description="Parameter 1")
+    param_2: str = Field(default="none", description="Parameter 2")
+    param_3: str = Field(default="none", description="Parameter 3")
+
+    def to_manim_code(self, var_name: str) -> str:
+        m = '{input_mobject}'
+        parts = [f'{var_name}_shape = {m}']
+        selected = {self.param_1, self.param_2, self.param_3} - {"none"}
+        CODE_MAP = {
+            "position": f'{var_name}_position = list({m}.get_center())',
+            "color": f'{var_name}_color = {m}.get_color()',
+            "width": f'{var_name}_width = {m}.width',
+            "height": f'{var_name}_height = {m}.height',
+            "radius": f'{var_name}_radius = getattr({m}, "radius", {m}.width / 2)',
+            "side_length": f'{var_name}_side_length = getattr({m}, "side_length", {m}.width)',
+            "stroke_width": f'{var_name}_stroke_width = {m}.get_stroke_width()',
+            "fill_opacity": f'{var_name}_fill_opacity = {m}.get_fill_opacity()',
+            "start": f'{var_name}_start = list({m}.get_start())',
+            "end": f'{var_name}_end = list({m}.get_end())',
+            "length": f'{var_name}_length = float(np.linalg.norm(np.array({m}.get_end()) - np.array({m}.get_start())))',
+            "direction": f'{var_name}_direction = list({m}.get_unit_vector()) if hasattr({m}, "get_unit_vector") else [1, 0, 0]',
+        }
+        for param in selected:
+            if param in CODE_MAP:
+                parts.append(CODE_MAP[param])
+        return '\n        '.join(parts)
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"mobject": "Mobject"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {
+            "shape": "Mobject",
+            "position": "Vec3",
+            "color": "Color",
+            "width": "Number",
+            "height": "Number",
+            "radius": "Number",
+            "side_length": "Number",
+            "stroke_width": "Number",
+            "fill_opacity": "Number",
+            "start": "Vec3",
+            "end": "Vec3",
+            "length": "Number",
+            "direction": "Vec3",
+        }
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Utilities"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        PARAM_OPTIONS = [
+            "none", "position", "color", "width", "height", "radius",
+            "side_length", "stroke_width", "fill_opacity", "start", "end",
+            "length", "direction"
+        ]
+        for p in ["param_1", "param_2", "param_3"]:
+            if "properties" in schema and p in schema["properties"]:
+                schema["properties"][p]["enum"] = PARAM_OPTIONS
+        return schema
+
+
+class TransformInPlaceNode(NodeBase):
+    """Apply Scale, Rotation, and Translation relative to the mobject's current center"""
+    animate: bool = Field(default=True, description="Animate (True) or apply instantly (False)")
+    copy: bool = Field(default=False, description="Animate a copy (preserves original)")
+    translation: str = Field(default="[0, 0, 0]", description="Translation [x, y, z]")
+    angle: str = Field(default="0", description="Rotation angle in degrees")
+    axis: str = Field(default="[0, 0, 1]", description="Rotation axis [x, y, z]")
+    scale: str = Field(default="[1, 1, 1]", description="Scale [x, y, z]")
+    target: str = Field(default="[0, 0, 0]", description="Final target position [x, y, z]")
+    run_time: str = Field(default="1.0")
+
+    def to_manim_code(self, var_name: str) -> str:
+        lines = [
+            f'{var_name}_target = {{input_mobject}}.copy()',
+            f'_s_{var_name} = np.array({{param_scale}}, dtype=float)',
+            f'{var_name}_target.apply_matrix(np.diag(_s_{var_name}), about_point={{input_mobject}}.get_center())',
+            f'{var_name}_target.rotate(np.radians({{param_angle}}), axis=np.array({{param_axis}}, dtype=float), about_point={{input_mobject}}.get_center())',
+            f'{var_name}_target.shift(np.array({{param_translation}}, dtype=float))',
+            f'{{MOVE_TO}}',
+            f'{var_name} = Transform({{input_mobject}}, {var_name}_target, run_time={self.run_time})',
+        ]
+        return '\n        '.join(lines)
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {
+            "mobject": "Mobject",
+            "param_translation": "Vec3",
+            "param_angle": "Number",
+            "param_axis": "Vec3",
+            "param_scale": "Vec3",
+            "param_target": "Vec3",
+        }
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {
+            "animation": "Animation",
+            "mobject_out": "Mobject"
+        }
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Animations"
 
 
 class TransformNode(NodeBase):

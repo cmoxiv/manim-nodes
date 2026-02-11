@@ -1,8 +1,9 @@
-import { Save, Download, FileText, Upload, FileDown, Layout, Code, Braces, AlertCircle } from 'lucide-react';
+import { Save, Download, FileText, Upload, FileDown, Layout, Code, Braces, AlertCircle, BookOpen } from 'lucide-react';
 import { useGraphStore } from '../../store/useGraphStore';
 import { useUIStore } from '../../store/useUIStore';
 import { usePreviewStore } from '../../store/usePreviewStore';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { apiClient } from '../../api/client';
 
 export default function TopBar() {
   const { graph, isDirty, isSaving, saveGraph, nodes, edges, setNodes, setEdges } = useGraphStore();
@@ -13,6 +14,82 @@ export default function TopBar() {
   const [exportFps, setExportFps] = useState(30);
   const [isExporting, setIsExporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showExamplesMenu, setShowExamplesMenu] = useState(false);
+  const [examplesList, setExamplesList] = useState<Array<{ id: string; name: string; description: string }>>([]);
+  const examplesRef = useRef<HTMLDivElement>(null);
+
+  // Close examples menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (examplesRef.current && !examplesRef.current.contains(event.target as Node)) {
+        setShowExamplesMenu(false);
+      }
+    };
+    if (showExamplesMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExamplesMenu]);
+
+  const handleShowExamples = async () => {
+    if (showExamplesMenu) {
+      setShowExamplesMenu(false);
+      return;
+    }
+    try {
+      const list = await apiClient.listExamples();
+      setExamplesList(list);
+      setShowExamplesMenu(true);
+    } catch (err) {
+      console.error('Failed to load examples:', err);
+    }
+  };
+
+  const handleLoadExample = async (exampleId: string) => {
+    try {
+      const example = await apiClient.getExample(exampleId);
+      const graphData = example.graph;
+
+      // Fetch node definitions to get inputs/outputs/category
+      const uniqueTypes = [...new Set(graphData.nodes.map((n: any) => n.data.type))] as string[];
+      const nodeDefs: Record<string, any> = {};
+      await Promise.all(
+        uniqueTypes.map(async (t: string) => {
+          nodeDefs[t] = await apiClient.getNodeInfo(t);
+        })
+      );
+
+      const loadedNodes = graphData.nodes.map((n: any) => {
+        const def = nodeDefs[n.data.type];
+        return {
+          id: n.id,
+          type: 'custom',
+          position: n.position,
+          data: {
+            ...n.data,
+            category: def?.category,
+            inputs: def?.inputs,
+            outputs: def?.outputs,
+          },
+        };
+      });
+
+      const loadedEdges = graphData.edges.map((e: any) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle,
+        targetHandle: e.targetHandle,
+      }));
+
+      setNodes(loadedNodes);
+      setEdges(loadedEdges);
+      setShowExamplesMenu(false);
+    } catch (err) {
+      console.error('Failed to load example:', err);
+      alert('Failed to load example');
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -103,6 +180,8 @@ export default function TopBar() {
     try {
       // Convert graph to export format
       const exportData = {
+        id: graph.id,
+        name: graph.name,
         nodes: nodes.map(n => ({
           id: n.id,
           type: n.data.type,
@@ -116,6 +195,7 @@ export default function TopBar() {
           sourceHandle: e.sourceHandle,
           targetHandle: e.targetHandle,
         })),
+        settings: graph.settings || {},
       };
 
       // Start export job
@@ -244,6 +324,31 @@ export default function TopBar() {
         onChange={handleLoadJSON}
         className="hidden"
       />
+
+      <div className="relative" ref={examplesRef}>
+        <button
+          onClick={handleShowExamples}
+          className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors"
+          title="Load example graph"
+        >
+          <BookOpen size={16} />
+          Examples
+        </button>
+        {showExamplesMenu && (
+          <div className="absolute right-0 top-full mt-1 w-72 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50 overflow-hidden">
+            {examplesList.map((ex) => (
+              <button
+                key={ex.id}
+                onClick={() => handleLoadExample(ex.id)}
+                className="w-full text-left px-4 py-3 hover:bg-gray-700 transition-colors border-b border-gray-700 last:border-b-0"
+              >
+                <div className="text-sm font-medium text-white">{ex.name}</div>
+                <div className="text-xs text-gray-400 mt-1">{ex.description}</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <button
         onClick={() => setShowExportDialog(true)}

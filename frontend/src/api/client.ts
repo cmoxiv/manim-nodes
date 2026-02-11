@@ -86,6 +86,19 @@ class ApiClient {
   getExportDownloadUrl(jobId: string): string {
     return `${API_BASE}/export/${jobId}/download`;
   }
+
+  // Examples
+  async listExamples(): Promise<Array<{ id: string; name: string; description: string }>> {
+    const response = await fetch(`${API_BASE}/examples`);
+    if (!response.ok) throw new Error('Failed to list examples');
+    return response.json();
+  }
+
+  async getExample(id: string): Promise<any> {
+    const response = await fetch(`${API_BASE}/examples/${id}`);
+    if (!response.ok) throw new Error('Failed to get example');
+    return response.json();
+  }
 }
 
 export const apiClient = new ApiClient();

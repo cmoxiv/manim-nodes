@@ -93,6 +93,11 @@ class GraphValidator:
                 # Only mobject is required, matrix is optional
                 if "mobject" not in connected_inputs:
                     self.errors.append((node.id, "Missing required input: mobject"))
+            # Special case: ComposeMatrix inputs are optional (at least one needed)
+            elif node.type == "ComposeMatrix":
+                m_inputs = {i for i in connected_inputs if i.startswith('m')}
+                if not m_inputs:
+                    self.errors.append((node.id, "ComposeMatrix needs at least one matrix connected"))
             else:
                 # Normal nodes: non-parameter inputs are required
                 # Parameter inputs (param_*) are optional

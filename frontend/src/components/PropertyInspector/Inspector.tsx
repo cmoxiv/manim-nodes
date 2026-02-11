@@ -83,15 +83,15 @@ export default function PropertyInspector() {
     // Render name field first
     if (selectedNode.data.name !== undefined) {
       properties.push(
-        <div key="__name__">
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+        <div key="__name__" className="flex items-center gap-3">
+          <label className="text-sm font-medium text-gray-300 whitespace-nowrap w-20 text-right flex-shrink-0">
             Name
           </label>
           <input
             type="text"
             value={selectedNode.data.name || ''}
             onChange={(e) => handleChange('name', e.target.value)}
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+            className="flex-1 min-w-0 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white text-sm font-mono focus:outline-none focus:border-blue-500"
           />
         </div>
       );
@@ -103,7 +103,7 @@ export default function PropertyInspector() {
 
     // First, collect all properties from schema with their defaults
     Object.keys(schemaProperties).forEach(key => {
-      if (!['type', 'inputs', 'outputs', 'category', 'name'].includes(key) && !matrixFields.has(key)) {
+      if (!['type', 'inputs', 'outputs', 'category', 'name', 'animate', 'copy', 'write_label'].includes(key) && !matrixFields.has(key)) {
         const propSchema = schemaProperties[key];
         propertiesToRender.set(key, selectedNode.data[key] ?? propSchema.default);
       }
@@ -111,7 +111,7 @@ export default function PropertyInspector() {
 
     // Then add any properties in data that aren't in schema (for backward compatibility)
     Object.keys(selectedNode.data).forEach(key => {
-      if (!['type', 'inputs', 'outputs', 'category', 'name'].includes(key) &&
+      if (!['type', 'inputs', 'outputs', 'category', 'name', 'animate', 'copy', 'write_label'].includes(key) &&
           !matrixFields.has(key) &&
           !propertiesToRender.has(key)) {
         propertiesToRender.set(key, selectedNode.data[key]);
@@ -126,65 +126,85 @@ export default function PropertyInspector() {
       const propSchema = schemaProperties[key];
       const enumValues = propSchema?.enum;
 
-      properties.push(
-        <div key={key}>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            {propSchema?.description || key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-          </label>
-
-          {/* Enum dropdown */}
-          {enumValues ? (
-            <select
+      // Code fields get label above (full width needed)
+      if (propSchema?.format === 'code') {
+        properties.push(
+          <div key={key}>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              {propSchema?.description || key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+            </label>
+            <textarea
               value={value as string}
               onChange={(e) => handleChange(key, e.target.value)}
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-blue-500"
-            >
-              {enumValues.map((opt: string) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-          ) : /* Boolean checkbox */
-          typeof value === 'boolean' ? (
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={value}
-                onChange={(e) => handleChange(key, e.target.checked)}
-                className="w-4 h-4"
-              />
-              <span className="text-sm text-gray-400">
-                {value ? 'Enabled' : 'Disabled'}
-              </span>
+              rows={12}
+              className="w-full px-3 py-2 bg-gray-950 border border-gray-700 rounded text-green-400 text-sm font-mono focus:outline-none focus:border-blue-500 resize-y"
+              spellCheck={false}
+            />
+          </div>
+        );
+      } else {
+        const keyLabel = key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+        const tooltip = propSchema?.description || keyLabel;
+        properties.push(
+          <div key={key} className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-300 whitespace-nowrap w-20 text-right flex-shrink-0" title={tooltip}>
+              {keyLabel}
             </label>
-          ) : /* Color input */
-          typeof value === 'string' && key.includes('color') ? (
-            <div className="flex gap-2">
-              <input
-                type="color"
-                value={value}
+
+            {/* Enum dropdown */}
+            {enumValues ? (
+              <select
+                value={value as string}
                 onChange={(e) => handleChange(key, e.target.value)}
-                className="w-12 h-10 rounded cursor-pointer"
-              />
+                className="flex-1 min-w-0 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-blue-500"
+              >
+                {enumValues.map((opt: string) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            ) : /* Boolean checkbox */
+            typeof value === 'boolean' ? (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={value}
+                  onChange={(e) => handleChange(key, e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-400">
+                  {value ? 'Enabled' : 'Disabled'}
+                </span>
+              </label>
+            ) : /* Color input */
+            typeof value === 'string' && key.includes('color') ? (
+              <div className="flex gap-2 flex-1 min-w-0">
+                <input
+                  type="color"
+                  value={value}
+                  onChange={(e) => handleChange(key, e.target.value)}
+                  className="w-10 h-9 rounded cursor-pointer flex-shrink-0"
+                />
+                <input
+                  type="text"
+                  value={value}
+                  onChange={(e) => handleChange(key, e.target.value)}
+                  className="flex-1 min-w-0 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            ) : /* Text input (handles numbers, expressions, positions) */
+            (
               <input
                 type="text"
-                value={value}
+                value={value as string}
                 onChange={(e) => handleChange(key, e.target.value)}
-                className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                className="flex-1 min-w-0 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white text-sm font-mono focus:outline-none focus:border-blue-500"
               />
-            </div>
-          ) : /* Text input (handles numbers, expressions, positions) */
-          (
-            <input
-              type="text"
-              value={value as string}
-              onChange={(e) => handleChange(key, e.target.value)}
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white text-sm font-mono focus:outline-none focus:border-blue-500"
-            />
-          )}
-        </div>
-      );
+            )}
+          </div>
+        );
+      }
     });
 
     return properties;

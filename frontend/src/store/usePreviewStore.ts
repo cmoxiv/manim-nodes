@@ -6,6 +6,7 @@ interface PreviewStore {
   videoUrl: string | null;
   error: string | null;
   log: string[];
+  debugLog: string[];
   generatedCode: string | null;
 
   // Playback state
@@ -19,6 +20,7 @@ interface PreviewStore {
   setVideoUrl: (url: string | null) => void;
   setError: (error: string | null) => void;
   addLog: (message: string) => void;
+  addDebugLog: (message: string) => void;
   clearLog: () => void;
   setGeneratedCode: (code: string | null) => void;
   setPlaying: (playing: boolean) => void;
@@ -33,6 +35,7 @@ export const usePreviewStore = create<PreviewStore>((set) => ({
   videoUrl: null,
   error: null,
   log: [],
+  debugLog: [],
   generatedCode: null,
   isPlaying: false,
   currentTime: 0,
@@ -43,7 +46,8 @@ export const usePreviewStore = create<PreviewStore>((set) => ({
   setVideoUrl: (url) => set({ videoUrl: url }),
   setError: (error) => set({ error }),
   addLog: (message) => set((state) => ({ log: [...state.log, message] })),
-  clearLog: () => set({ log: [] }),
+  addDebugLog: (message) => set((state) => ({ debugLog: [...state.debugLog, message] })),
+  clearLog: () => set({ log: [], debugLog: [] }),
   setGeneratedCode: (code) => set({ generatedCode: code }),
   setPlaying: (playing) => set({ isPlaying: playing }),
   setCurrentTime: (time) => set({ currentTime: time }),
@@ -55,6 +59,7 @@ export const usePreviewStore = create<PreviewStore>((set) => ({
       videoUrl: null,
       error: null,
       log: [],
+      debugLog: [],
       generatedCode: null,
       isPlaying: false,
       currentTime: 0,

@@ -107,7 +107,7 @@ import numpy as np"""
         for node in self.graph.nodes:
             if node.type == "Sequence":
                 # Animations in Sequence are generated inline
-                for i in range(1, 6):
+                for i in range(1, 11):
                     input_name = f"anim{i}"
                     source_info = input_map.get((node.id, input_name))
                     source_node_id = source_info[0] if source_info else None
@@ -116,7 +116,7 @@ import numpy as np"""
                         animations_in_sequence.add(source_node_id)
             elif node.type == "AnimationGroup":
                 # Animations in AnimationGroup need objects created but not played
-                for i in range(1, 6):
+                for i in range(1, 11):
                     input_name = f"anim{i}"
                     source_info = input_map.get((node.id, input_name))
                     source_node_id = source_info[0] if source_info else None
@@ -126,6 +126,9 @@ import numpy as np"""
 
         # Build mapping of node_id -> mobject_variable for animation chains
         node_mobjects: Dict[str, str] = {}
+
+        # Deferred labels: shape_var -> [label_var_names] (added after animation plays)
+        pending_shape_labels: Dict[str, list] = {}
 
         # Track if any animations were played
         has_animations = False
@@ -150,7 +153,9 @@ import numpy as np"""
                         continue
 
                     lines.append(f"        # Sequence: play animations in order")
-                    self._emit_sequence_animations(node_id, input_map, node_map, node_vars, node_mobjects, lines)
+                    self._emit_sequence_animations(node_id, input_map, node_map, node_vars,
+                                                   node_mobjects, lines, pending_shape_labels,
+                                                   animations_in_sequence, animations_in_group)
 
                     has_animations = True
                     continue  # Skip normal processing for Sequence
@@ -160,7 +165,7 @@ import numpy as np"""
                     var_name = node_vars[node_id]
                     # Collect connected animations
                     connected_anims = []
-                    for i in range(1, 6):
+                    for i in range(1, 11):
                         anim_name = f"anim{i}"
                         source_info = input_map.get((node_id, anim_name))
 
@@ -174,6 +179,18 @@ import numpy as np"""
                         # Add comment showing execution order
                         lines.append(f"        # Execution: {exec_index}, Order: {node_order}, Type: {node.type}")
                         anims_str = ", ".join(connected_anims)
+
+                        # Play upstream chain animations before the group
+                        for j in range(1, 11):
+                            src = input_map.get((node_id, f"anim{j}"))
+                            if not src:
+                                continue
+                            anim_node_id = src[0]
+                            chain = self._collect_chain_animations(anim_node_id, input_map, node_map,
+                                                                   animations_in_sequence, animations_in_group)
+                            for chain_id in chain:
+                                self._play_with_labels(chain_id, node_vars[chain_id], node_mobjects,
+                                                       pending_shape_labels, lines)
 
                         # Check if this AnimationGroup is used in a Sequence
                         lag = node_instance.lag_ratio
@@ -190,6 +207,18 @@ import numpy as np"""
                                 lines.append(f"        self.play({anims_str}, run_time={node_instance.run_time})")
                             has_animations = True
 
+                            # Emit deferred labels for shapes animated in this group
+                            for j in range(1, 11):
+                                src = input_map.get((node_id, f"anim{j}"))
+                                if not src:
+                                    continue
+                                anim_node_id = src[0]
+                                mob_var = node_mobjects.get(anim_node_id)
+                                lbl_key = (mob_var[:-6] if mob_var and mob_var.endswith('_shape') else mob_var) if mob_var else None
+                                if lbl_key and lbl_key in pending_shape_labels:
+                                    for lbl_var in pending_shape_labels.pop(lbl_key):
+                                        lines.append(f"        self.add({lbl_var})")
+
                     continue  # Skip normal processing for AnimationGroup
 
                 # Special handling for Group node
@@ -197,7 +226,7 @@ import numpy as np"""
                     var_name = node_vars[node_id]
                     # Collect connected objects
                     connected_objs = []
-                    for i in range(1, 6):
+                    for i in range(1, 11):
                         obj_name = f"obj{i}"
                         source_info = input_map.get((node_id, obj_name))
 
@@ -248,16 +277,22 @@ import numpy as np"""
                     if mobject_source_id:
                         source_node = node_map.get(mobject_source_id)
                         if source_node and source_node.type == "Group":
-                            # Expand Create to create each group member
                             var_name = node_vars[node_id]
                             source_var = node_vars[mobject_source_id]
+                            create_copy_flag = getattr(node_instance, 'copy', False)
 
-                            # Generate: self.play(*[Create(obj) for obj in group])
                             lines.append(f"        # Create each object in group")
-                            lines.append(f"        self.play(*[Create(obj, run_time={node_instance.run_time}) for obj in {source_var}])")
+                            if create_copy_flag:
+                                copy_src = f"{var_name}_src"
+                                lines.append(f"        {copy_src} = {source_var}.copy()")
+                                target_var = copy_src
+                            else:
+                                target_var = source_var
+                            # Store as animation variable — only plays via Sequence/AnimationGroup
+                            lines.append(f"        {var_name} = AnimationGroup(*[Create(obj, run_time={node_instance.run_time}) for obj in {target_var}])")
 
-                            # Store the group as the mobject for chaining
-                            node_mobjects[node_id] = source_var
+                            # Store the mobject for chaining
+                            node_mobjects[node_id] = target_var
 
                             continue  # Skip normal processing for Create with Group
 
@@ -271,6 +306,9 @@ import numpy as np"""
                 # Replace input placeholders with actual variable names
                 inputs = node_instance.get_inputs()
                 mobject_var = None  # Track the mobject variable for this animation
+                copy_flag = getattr(node_instance, 'copy', False)
+                copy_var_name = f"{var_name}_src" if copy_flag else None
+                copy_prepend = None
 
                 for input_name in inputs:
                     placeholder = f"{{input_{input_name}}}"
@@ -297,9 +335,15 @@ import numpy as np"""
                             if not chain_var:
                                 # Fallback to naming convention if not found
                                 chain_var = f"{source_var}_mobject"
-                            code = code.replace(placeholder, chain_var)
-                            mobject_var = chain_var  # Remember for later
-                            node_mobjects[node_id] = chain_var  # Store for next animation in chain
+                            if copy_flag and input_name in ("mobject", "source"):
+                                copy_prepend = f"{copy_var_name} = {chain_var}.copy()"
+                                code = code.replace(placeholder, copy_var_name)
+                                mobject_var = copy_var_name
+                                node_mobjects[node_id] = copy_var_name
+                            else:
+                                code = code.replace(placeholder, chain_var)
+                                mobject_var = chain_var  # Remember for later
+                                node_mobjects[node_id] = chain_var  # Store for next animation in chain
                         # If source is a shape/mobject node (start of animation path)
                         else:
                             # Check if source outputs shape/mobject type
@@ -310,27 +354,51 @@ import numpy as np"""
                                 # Pass through the original shape (no copying)
                                 # Animations modify the original object, making chaining more intuitive
                                 if any(out_type in source_outputs.values() for out_type in ["Mobject", "shape", "mobject", "group"]):
-                                    code = code.replace(placeholder, source_var)
-                                    mobject_var = source_var  # Use original, not a copy
-                                    node_mobjects[node_id] = source_var  # Store original for next animation in chain
+                                    if copy_flag and input_name in ("mobject", "source"):
+                                        copy_prepend = f"{copy_var_name} = {source_var}.copy()"
+                                        code = code.replace(placeholder, copy_var_name)
+                                        mobject_var = copy_var_name
+                                        node_mobjects[node_id] = copy_var_name
+                                    else:
+                                        code = code.replace(placeholder, source_var)
+                                        mobject_var = source_var  # Use original, not a copy
+                                        node_mobjects[node_id] = source_var  # Store original for next animation in chain
                                 else:
                                     code = code.replace(placeholder, source_var)
                             else:
                                 code = code.replace(placeholder, source_var)
 
+                # Special handling for ComposeMatrix: multiply connected matrices
+                if node.type == "ComposeMatrix":
+                    connected = []
+                    for slot in ["m1", "m2", "m3", "m4"]:
+                        src = input_map.get((node_id, slot))
+                        if src:
+                            connected.append(node_vars[src[0]])
+                    if len(connected) >= 2:
+                        # Reverse so m1 is applied first (rightmost in product)
+                        connected = list(reversed(connected))
+                        expr = f"np.matmul({connected[0]}, {connected[1]})"
+                        for m in connected[2:]:
+                            expr = f"np.matmul({expr}, {m})"
+                        code = f"{var_name} = {expr}"
+                    elif len(connected) == 1:
+                        code = f"{var_name} = {connected[0]}.copy()"
+                    else:
+                        code = f"{var_name} = np.eye(4)"
+
                 # Special handling for Transform node matrix
                 if node.type == "Transform":
-                    # MANIM's ApplyMatrix only applies the 2x2 linear transformation
-                    # Translation must be applied separately
+                    # Connected matrix is 4x4 homogeneous: extract 3x3 linear part + translation
+                    # MANIM's apply_matrix takes a 3x3 for 3D linear transforms
                     matrix_info = input_map.get((node_id, "matrix"))
 
                     matrix_source_id = matrix_info[0] if matrix_info else None
 
                     if matrix_source_id:
-                        # Use connected matrix (assume it's already in correct format)
                         matrix_var = node_vars[matrix_source_id]
-                        code = code.replace("{MATRIX_2X2}", matrix_var)
-                        code = code.replace("{TRANSLATION}", "[0, 0, 0]")  # No translation if matrix is connected
+                        code = code.replace("{MATRIX_2X2}", f"{matrix_var}[:3, :3]")
+                        code = code.replace("{TRANSLATION}", f"{matrix_var}[:3, 3]")
                     else:
                         # Extract 2x2 linear transformation (rotation/scale/skew)
                         matrix_2x2 = f"[[{node_instance.m11}, {node_instance.m12}], [{node_instance.m21}, {node_instance.m22}]]"
@@ -344,27 +412,46 @@ import numpy as np"""
                     if mobject_var:
                         node_mobjects[node_id] = mobject_var
 
-                # Special handling for Rotate node about_point
-                if node.type == "Rotate":
-                    # Check if custom about_point (Vec3) is connected
-                    about_point_info = input_map.get((node_id, "param_about_point"))
+                # TransformInPlace: resolve {MOVE_TO} and track mobject
+                if node.type == "TransformInPlace":
+                    target_info = input_map.get((node_id, "param_target"))
+                    if target_info:
+                        target_var = node_vars[target_info[0]]
+                    else:
+                        target_var = node_instance.target
+                    code = code.replace("{MOVE_TO}", f"{var_name}_target.move_to(np.array({target_var}, dtype=float))")
+                    if mobject_var:
+                        node_mobjects[node_id] = mobject_var
 
+                # Resolve {ABOUT_POINT} placeholder for Rotate and Scale nodes
+                if node.type in ("Rotate", "Scale") and "{ABOUT_POINT}" in code:
+                    about_point_info = input_map.get((node_id, "param_about_point"))
                     about_point_source_id = about_point_info[0] if about_point_info else None
 
                     if about_point_source_id:
-                        # Use connected Vec3 value
-                        about_var = node_vars[about_point_source_id]
-                        code = code.replace("{ABOUT_POINT}", about_var)
+                        about_val = node_vars[about_point_source_id]
+                    elif node_instance.about_point == "self":
+                        # Use mobject's current center at runtime (respects prior MoveTo etc.)
+                        about_val = f"{mobject_var}.get_center()" if mobject_var else "ORIGIN"
                     else:
-                        # Use predefined about_point mode
                         point_map = {
                             "center": f"{mobject_var}.get_center()" if mobject_var else "ORIGIN",
                             "min": f"{mobject_var}.get_corner(DL)" if mobject_var else "DL",
                             "max": f"{mobject_var}.get_corner(UR)" if mobject_var else "UR",
                             "origin": "ORIGIN"
                         }
-                        about = point_map.get(node_instance.about_point, f"{mobject_var}.get_center()" if mobject_var else "ORIGIN")
-                        code = code.replace("{ABOUT_POINT}", about)
+                        about_val = point_map.get(node_instance.about_point, f"{mobject_var}.get_center()" if mobject_var else "ORIGIN")
+
+                    if about_val is None:
+                        code = code.replace("{ABOUT_POINT}", "")
+                    elif node.type == "Rotate":
+                        # Rotate animated: "..., {ABOUT_POINT}run_time=..." → needs trailing comma
+                        # Rotate instant: "...axis=...{ABOUT_POINT})" → needs leading comma
+                        code = code.replace("{ABOUT_POINT}run_time", f"about_point={about_val}, run_time")
+                        code = code.replace("{ABOUT_POINT}", f", about_point={about_val}")
+                    else:
+                        # Scale: "{param_scale_factor}{ABOUT_POINT})" → needs leading comma
+                        code = code.replace("{ABOUT_POINT}", f", about_point={about_val}")
 
                 # Special handling for Color node: Vec3 RGB input override and RGB output extraction
                 if node.type == "Color":
@@ -429,8 +516,14 @@ import numpy as np"""
                                 else:
                                     code = code.replace(placeholder, "0")
 
+                # DebugPrint: replace unresolved input placeholder with fallback
+                if node.type == "DebugPrint" and "{input_value}" in code:
+                    code = code.replace("{input_value}", '"(no input connected)"')
+
                 # Add comment showing execution order
                 lines.append(f"        # Execution: {exec_index}, Order: {node_order}, Type: {node.type}")
+                if copy_prepend:
+                    lines.append(f"        {copy_prepend}")
                 lines.append(f"        {code}")
 
                 # Color node: extract r, g, b outputs only if connected
@@ -443,34 +536,90 @@ import numpy as np"""
                         lines.append(f"        _c = color_to_rgb({var_name})")
                         lines.append(f"        {var_name}_r, {var_name}_g, {var_name}_b = _c[0], _c[1], _c[2]")
 
+                # Shapes with edge outputs: alias + edge extraction + labels
+                EDGE_SHAPE_SIDES = {"Triangle": 3, "Square": 4, "Rectangle": 4, "RightTriangle": 3, "IsoscelesTriangle": 3}
+                if node.type in EDGE_SHAPE_SIDES:
+                    n_sides = EDGE_SHAPE_SIDES[node.type]
+                    lines.append(f"        {var_name}_shape = {var_name}")
+                    edge_handles = {f"side_{i+1}" for i in range(n_sides)} | {"edges"}
+                    edge_used = any(
+                        edge.source == node_id and edge.sourceHandle in edge_handles
+                        for edge in self.graph.edges
+                    )
+                    edge_labels_text = getattr(node_instance, 'edge_labels', '')
+                    need_edges = edge_used or bool(edge_labels_text)
+                    if need_edges:
+                        lines.append(f"        _verts_{var_name} = {var_name}.get_vertices()")
+                        for i in range(n_sides):
+                            lines.append(f"        {var_name}_side_{i+1} = Line(_verts_{var_name}[{i}], _verts_{var_name}[{(i+1) % n_sides}], color={var_name}.get_color(), stroke_width={var_name}.get_stroke_width())")
+                        side_list = ", ".join(f"{var_name}_side_{i+1}" for i in range(n_sides))
+                        lines.append(f"        {var_name}_edges = VGroup({side_list})")
+                        # Set outward-facing label directions (perpendicular to each edge, oriented outward)
+                        lines.append(f"        _centroid_{var_name} = np.mean(_verts_{var_name}, axis=0)")
+                        for i in range(n_sides):
+                            j = (i + 1) % n_sides
+                            lines.append(
+                                f"        _ed = _verts_{var_name}[{j}] - _verts_{var_name}[{i}]; "
+                                f"_perp = np.array([-_ed[1], _ed[0], 0]); "
+                                f"_perp = _perp / (np.linalg.norm(_perp) + 1e-10); "
+                                f"_mid = (_verts_{var_name}[{i}] + _verts_{var_name}[{j}]) / 2; "
+                                f"{var_name}_side_{i+1}._label_direction = -_perp if np.dot(_perp, _centroid_{var_name} - _mid) > 0 else _perp"
+                            )
+
+                    # Generate center + edge labels
+                    center_label_text = getattr(node_instance, 'label', '')
+                    lbl_font = getattr(node_instance, 'label_font_size', '48.0')
+                    lbl_offset = getattr(node_instance, 'label_offset', '0.3')
+                    shape_label_vars = []
+
+                    if center_label_text:
+                        escaped = center_label_text.replace('"', '\\"')
+                        lines.append(f'        {var_name}_center_label = MathTex(r"{escaped}", font_size={lbl_font})')
+                        lines.append(f'        {var_name}_center_label.move_to({var_name}.get_center())')
+                        shape_label_vars.append(f'{var_name}_center_label')
+
+                    if edge_labels_text:
+                        edge_label_list = [l.strip() for l in edge_labels_text.split(',')]
+                        for i, el in enumerate(edge_label_list):
+                            if el and i < n_sides:
+                                escaped = el.replace('"', '\\"')
+                                lbl_var = f'{var_name}_side_{i+1}_label'
+                                lines.append(f'        {lbl_var} = MathTex(r"{escaped}", font_size={lbl_font})')
+                                lines.append(f'        {lbl_var}.move_to({var_name}_side_{i+1}.point_from_proportion(0.5) + {lbl_offset} * {var_name}_side_{i+1}._label_direction)')
+                                shape_label_vars.append(lbl_var)
+
+                    if getattr(node_instance, 'write_label', False) and shape_label_vars:
+                        pending_shape_labels[var_name] = shape_label_vars
+
                 # Handle rendering based on node type
                 outputs = node_instance.get_outputs()
+
+                # Defer LineNode labels for post-animation rendering
+                if node.type == "Line" and getattr(node_instance, 'write_label', False):
+                    pending_shape_labels[var_name] = [f'{var_name}_label']
+
+                # Resolve pending label key: strip _shape suffix to match base var
+                _lbl_key = (mobject_var[:-6] if mobject_var and mobject_var.endswith('_shape') else mobject_var) if mobject_var else None
+                if _lbl_key and _lbl_key not in pending_shape_labels:
+                    _lbl_key = None  # no pending labels for this shape
 
                 # Special handling for Show node - add mobject without animation
                 if node.type == "Show":
                     if mobject_var:
                         lines.append(f"        self.add({mobject_var})")
-                # If this is an animation node, play it if not in a Sequence or AnimationGroup
+                        # Add deferred labels from source shape
+                        if _lbl_key:
+                            for lbl_var in pending_shape_labels.pop(_lbl_key):
+                                lines.append(f"        self.add({lbl_var})")
+                # Animation nodes are NOT auto-played.
+                # They only play through Sequence or AnimationGroup nodes.
                 elif "animation" in outputs:
-                    # Check if animation should be played or applied instantly
-                    should_animate = getattr(node_instance, 'animate', True)
-
-                    # Skip if this animation is in a Sequence or AnimationGroup (handled separately)
-                    # Also skip camera nodes - they execute their movements directly
-                    if node_id not in animations_in_sequence and node_id not in animations_in_group:
-                        # Camera nodes execute directly, don't play them
-                        if node.type in ["SetCameraOrientation", "MoveCamera", "ZoomCamera"]:
-                            # Camera movements already executed in their to_manim_code()
-                            pass
-                        elif should_animate:
-                            lines.append(f"        self.play({var_name})")
-                            has_animations = True
-                        else:
-                            # Apply transformation instantly (no animation)
-                            # The transformation was already applied in the code generation
-                            # Just mark that we had content
-                            pass
+                    pass
                 # Shapes are NOT automatically added - they need a Show node to render
+
+                # Auto-add label for animation nodes with built-in labels (e.g. SquareFromEdge)
+                if getattr(node_instance, 'write_label', False) and "animation" in outputs and node.type not in EDGE_SHAPE_SIDES:
+                    lines.append(f"        self.add({var_name}_label)")
 
             except Exception as e:
                 error_msg = f"Error generating code for node {node_id}: {str(e)}"
@@ -487,13 +636,64 @@ import numpy as np"""
 
         return "\n".join(lines)
 
-    def _emit_sequence_animations(self, node_id: str, input_map: dict, node_map: dict, node_vars: dict, node_mobjects: dict, lines: list):
+    def _collect_chain_animations(self, anim_node_id: str, input_map: dict, node_map: dict,
+                                    animations_in_sequence: set, animations_in_group: set) -> list:
+        """Walk back from an animation node through mobject/source inputs to find
+        upstream animation nodes not directly in any Sequence or AnimationGroup.
+        Returns list of node IDs in chain order (upstream first)."""
+        chain = []
+        current_id = anim_node_id
+        visited = set()
+
+        while current_id and current_id not in visited:
+            visited.add(current_id)
+            current_node = node_map.get(current_id)
+            if not current_node or current_node.type not in self._animation_types:
+                break
+
+            # Walk back through mobject/source input
+            upstream_anim_id = None
+            for handle in ["mobject", "source"]:
+                source_info = input_map.get((current_id, handle))
+                if source_info:
+                    src_id = source_info[0]
+                    src_node = node_map.get(src_id)
+                    if src_node and src_node.type in self._animation_types:
+                        upstream_anim_id = src_id
+                        break
+
+            if not upstream_anim_id:
+                break
+
+            # Only include if not already directly in a Sequence or AnimationGroup
+            if upstream_anim_id not in animations_in_sequence and upstream_anim_id not in animations_in_group:
+                chain.append(upstream_anim_id)
+
+            current_id = upstream_anim_id
+
+        return list(reversed(chain))  # upstream first
+
+    def _play_with_labels(self, node_id: str, var_name: str, node_mobjects: dict,
+                          pending_shape_labels: dict, lines: list):
+        """Play an animation and emit any deferred labels for its shape."""
+        lines.append(f"        self.play({var_name})")
+        mob_var = node_mobjects.get(node_id)
+        lbl_key = (mob_var[:-6] if mob_var and mob_var.endswith('_shape') else mob_var) if mob_var else None
+        if lbl_key and lbl_key in pending_shape_labels:
+            for lbl_var in pending_shape_labels.pop(lbl_key):
+                lines.append(f"        self.add({lbl_var})")
+
+    def _emit_sequence_animations(self, node_id: str, input_map: dict, node_map: dict,
+                                  node_vars: dict, node_mobjects: dict, lines: list,
+                                  pending_shape_labels: dict = {},
+                                  animations_in_sequence: set = set(),
+                                  animations_in_group: set = set()):
         """Recursively emit self.play()/self.add()/camera calls for a Sequence node."""
         node = node_map[node_id]
         instance = NODE_REGISTRY["Sequence"](**node.data)
         wait_time = instance.wait_time
 
-        for i in range(1, 6):  # anim1 to anim5
+        for i in range(1, 11):  # anim1 to anim10
             anim_input = f"anim{i}"
             source_info = input_map.get((node_id, anim_input))
             source_node_id = source_info[0] if source_info else None
@@ -506,7 +706,9 @@ import numpy as np"""
 
             if source_node and source_node.type == "Sequence":
                 # Recurse into nested Sequence
-                self._emit_sequence_animations(source_node_id, input_map, node_map, node_vars, node_mobjects, lines)
+                self._emit_sequence_animations(source_node_id, input_map, node_map, node_vars,
+                                               node_mobjects, lines, pending_shape_labels,
+                                               animations_in_sequence, animations_in_group)
             elif source_node and source_node.type == "Show":
                 mobject_var = f"{source_var}_mobject"
                 lines.append(f"        self.add({mobject_var})")
@@ -528,7 +730,16 @@ import numpy as np"""
                 elif source_node.type == "ZoomCamera":
                     lines.append(f"        self.move_camera(zoom={source_instance.scale}, run_time={source_instance.run_time})")
             else:
-                lines.append(f"        self.play({source_var})")
+                # Play upstream chain animations first (animations connected via shape output)
+                chain = self._collect_chain_animations(source_node_id, input_map, node_map,
+                                                       animations_in_sequence, animations_in_group)
+                for chain_id in chain:
+                    self._play_with_labels(chain_id, node_vars[chain_id], node_mobjects,
+                                           pending_shape_labels, lines)
+
+                # Play the directly-connected animation
+                self._play_with_labels(source_node_id, source_var, node_mobjects,
+                                       pending_shape_labels, lines)
 
             # Add wait time after each animation
             if wait_time != "0" and wait_time != "0.0":
