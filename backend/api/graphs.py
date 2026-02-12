@@ -78,6 +78,33 @@ async def delete_graph(graph_id: str, storage: StorageManager = Depends(get_stor
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{graph_id}/objects")
+async def get_graph_objects(graph_id: str, storage: StorageManager = Depends(get_storage)):
+    """Get named objects in a graph (for ImportGraph node)"""
+    try:
+        graph = storage.load_graph(graph_id)
+        if graph is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+
+        # Extract named nodes (nodes with user-set names that produce Mobject outputs)
+        objects = []
+        for node in graph.nodes:
+            node_data = node.data if isinstance(node.data, dict) else {}
+            name = node_data.get("name", "")
+            if name:
+                objects.append({
+                    "name": name,
+                    "type": node.type,
+                    "node_id": node.id,
+                })
+
+        return objects
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{graph_id}/validate")
 async def validate_graph(graph_id: str, storage: StorageManager = Depends(get_storage)):
     """Validate a graph"""

@@ -2,6 +2,7 @@ from typing import Dict, List
 import logging
 from ..models.graph import Graph
 from ..nodes import NODE_REGISTRY
+from ..nodes.utilities import parse_function_code
 from .graph_validator import GraphValidator, ValidationError
 
 logger = logging.getLogger("manim_nodes")
@@ -13,12 +14,21 @@ class CodeGenerator:
     def __init__(self, graph: Graph):
         self.graph = graph
         self.validator = GraphValidator(graph)
+        self._type_counters: Dict[str, int] = {}
+        self.var_to_node_id: Dict[str, str] = {}  # var_name -> node_id reverse mapping
 
         # Build dynamic set of animation type names from NODE_REGISTRY
+        # Animation nodes CONSUME a mobject input; shape nodes CREATE mobjects
         self._animation_types: set = set()
         for reg_name, reg_cls in NODE_REGISTRY.items():
             try:
-                if "Animation" in reg_cls().get_outputs().values():
+                instance = reg_cls()
+                outputs = instance.get_outputs()
+                inputs = instance.get_inputs()
+                has_animation_output = "Animation" in outputs.values()
+                has_mobject_input = "mobject" in inputs or "source" in inputs
+                # Animation nodes have Animation output AND take a mobject/source input
+                if has_animation_output and has_mobject_input:
                     self._animation_types.add(reg_name)
             except Exception:
                 pass
@@ -37,7 +47,9 @@ class CodeGenerator:
         is_valid, errors = self.validator.validate()
         if not is_valid:
             error_messages = "\n".join([f"  - {node_id or 'Graph'}: {msg}" for node_id, msg in errors])
-            raise ValidationError(f"Graph validation failed:\n{error_messages}")
+            # Attach the first offending node_id for highlighting
+            first_node_id = next((nid for nid, _ in errors if nid), None)
+            raise ValidationError(f"Graph validation failed:\n{error_messages}", node_id=first_node_id)
 
         # Get execution order
         execution_order = self.validator.get_execution_order()
@@ -48,6 +60,17 @@ class CodeGenerator:
         # Imports
         code_parts.append(self._generate_imports())
         code_parts.append("")
+
+        # Module-level function definitions (FunctionDef nodes)
+        node_map = {node.id: node for node in self.graph.nodes}
+        for node_id in execution_order:
+            node = node_map.get(node_id)
+            if node and node.type == "FunctionDef":
+                node_data = node.data if isinstance(node.data, dict) else {}
+                code = node_data.get("code", "")
+                if code.strip():
+                    code_parts.append(code)
+                    code_parts.append("")
 
         # Scene class
         code_parts.append(self._generate_scene_class(execution_order))
@@ -94,12 +117,46 @@ import numpy as np"""
             node_data = node.data if isinstance(node.data, dict) else {}
             base_name = self._safe_var_name(node.id, node.type, node_data)
 
-            # Deduplicate: if name already used, append short hash suffix
-            if base_name in used_names:
-                base_name = f"{base_name}_{self._get_short_id(node.id)}"
+            # Constant vectors are singletons — all instances share the same name
+            if node.type not in self.CONST_VEC_TYPES and node.type not in self.CONST_VEC_ALIASES:
+                # Deduplicate: if name already used, append incrementing suffix
+                if base_name in used_names:
+                    suffix = 2
+                    while f"{base_name}_{suffix}" in used_names:
+                        suffix += 1
+                    base_name = f"{base_name}_{suffix}"
             used_names.add(base_name)
 
             node_vars[node.id] = base_name
+            self.var_to_node_id[base_name] = node.id
+
+        # Resolve junctions: map each junction's variable to its input source
+        # Iterates until stable to handle chained junctions
+        changed = True
+        while changed:
+            changed = False
+            for node in self.graph.nodes:
+                if node.type == "Junction":
+                    source_info = input_map.get((node.id, "in"))
+                    if source_info:
+                        source_node_id, source_handle = source_info
+                        source_var = node_vars.get(source_node_id)
+                        if source_var:
+                            # For multi-output source nodes, append handle name
+                            source_node = node_map.get(source_node_id)
+                            if source_node and source_node.type != "Junction":
+                                source_class = NODE_REGISTRY.get(source_node.type)
+                                if source_class:
+                                    try:
+                                        source_instance = source_class(**source_node.data)
+                                        source_outputs = source_instance.get_outputs()
+                                        if len(source_outputs) > 1 and source_handle != "default":
+                                            source_var = f"{source_var}_{source_handle}"
+                                    except Exception:
+                                        pass
+                            if node_vars[node.id] != source_var:
+                                node_vars[node.id] = source_var
+                                changed = True
 
         # Build sets of animation nodes in Sequence and AnimationGroup
         animations_in_sequence = set()
@@ -139,6 +196,14 @@ import numpy as np"""
             if not node:
                 continue
 
+            # FunctionDef nodes are emitted at module level, skip here
+            if node.type == "FunctionDef":
+                continue
+
+            # Skip frame nodes — visual-only (frontend grouping)
+            if node.type == "__groupFrame":
+                continue
+
             try:
                 node_class = NODE_REGISTRY[node.type]
                 node_instance = node_class(**node.data)
@@ -163,8 +228,10 @@ import numpy as np"""
                 # Special handling for AnimationGroup node
                 if node.type == "AnimationGroup":
                     var_name = node_vars[node_id]
-                    # Collect connected animations
+                    CAMERA_TYPES = {"SetCameraOrientation", "MoveCamera", "ZoomCamera"}
+                    # Collect connected animations, separating camera nodes
                     connected_anims = []
+                    camera_node_ids = []
                     for i in range(1, 11):
                         anim_name = f"anim{i}"
                         source_info = input_map.get((node_id, anim_name))
@@ -172,13 +239,16 @@ import numpy as np"""
                         source_node_id = source_info[0] if source_info else None
 
                         if source_node_id:
-                            source_var = node_vars[source_node_id]
-                            connected_anims.append(source_var)
+                            source_node_obj = node_map.get(source_node_id)
+                            if source_node_obj and source_node_obj.type in CAMERA_TYPES:
+                                camera_node_ids.append(source_node_id)
+                            else:
+                                source_var = node_vars[source_node_id]
+                                connected_anims.append(source_var)
 
-                    if connected_anims:
+                    if connected_anims or camera_node_ids:
                         # Add comment showing execution order
-                        lines.append(f"        # Execution: {exec_index}, Order: {node_order}, Type: {node.type}")
-                        anims_str = ", ".join(connected_anims)
+                        lines.append(f"        # Execution: {exec_index}, Order: {node_order}, Type: {node.type}, ID: {node.id}")
 
                         # Play upstream chain animations before the group
                         for j in range(1, 11):
@@ -192,32 +262,39 @@ import numpy as np"""
                                 self._play_with_labels(chain_id, node_vars[chain_id], node_mobjects,
                                                        pending_shape_labels, lines)
 
-                        # Check if this AnimationGroup is used in a Sequence
-                        lag = node_instance.lag_ratio
-                        has_lag = lag != "0" and lag != "0.0"
-                        if node_id in animations_in_sequence:
-                            if has_lag:
-                                lines.append(f"        {var_name} = AnimationGroup({anims_str}, lag_ratio={lag}, run_time={node_instance.run_time})")
-                            else:
-                                lines.append(f"        {var_name} = AnimationGroup({anims_str}, run_time={node_instance.run_time})")
-                        else:
-                            if has_lag:
-                                lines.append(f"        self.play({anims_str}, lag_ratio={lag}, run_time={node_instance.run_time})")
-                            else:
-                                lines.append(f"        self.play({anims_str}, run_time={node_instance.run_time})")
-                            has_animations = True
+                        # Emit camera commands before the group (not AnimationGroup-compatible)
+                        for cam_id in camera_node_ids:
+                            cam_node = node_map[cam_id]
+                            self._emit_camera_command(cam_node, lines)
 
-                            # Emit deferred labels for shapes animated in this group
-                            for j in range(1, 11):
-                                src = input_map.get((node_id, f"anim{j}"))
-                                if not src:
-                                    continue
-                                anim_node_id = src[0]
-                                mob_var = node_mobjects.get(anim_node_id)
-                                lbl_key = (mob_var[:-6] if mob_var and mob_var.endswith('_shape') else mob_var) if mob_var else None
-                                if lbl_key and lbl_key in pending_shape_labels:
-                                    for lbl_var in pending_shape_labels.pop(lbl_key):
-                                        lines.append(f"        self.add({lbl_var})")
+                        # Build AnimationGroup from non-camera animations
+                        if connected_anims:
+                            anims_str = ", ".join(connected_anims)
+                            lag = node_instance.lag_ratio
+                            has_lag = lag != "0" and lag != "0.0"
+                            if node_id in animations_in_sequence:
+                                if has_lag:
+                                    lines.append(f"        {var_name} = AnimationGroup({anims_str}, lag_ratio={lag}, run_time={node_instance.run_time})")
+                                else:
+                                    lines.append(f"        {var_name} = AnimationGroup({anims_str}, run_time={node_instance.run_time})")
+                            else:
+                                if has_lag:
+                                    lines.append(f"        self.play({anims_str}, lag_ratio={lag}, run_time={node_instance.run_time})")
+                                else:
+                                    lines.append(f"        self.play({anims_str}, run_time={node_instance.run_time})")
+                                has_animations = True
+
+                                # Emit deferred labels for shapes animated in this group
+                                for j in range(1, 11):
+                                    src = input_map.get((node_id, f"anim{j}"))
+                                    if not src:
+                                        continue
+                                    anim_node_id = src[0]
+                                    mob_var = node_mobjects.get(anim_node_id)
+                                    lbl_key = (mob_var[:-6] if mob_var and mob_var.endswith('_shape') else mob_var) if mob_var else None
+                                    if lbl_key and lbl_key in pending_shape_labels:
+                                        for lbl_var in pending_shape_labels.pop(lbl_key):
+                                            lines.append(f"        self.add({lbl_var})")
 
                     continue  # Skip normal processing for AnimationGroup
 
@@ -296,11 +373,31 @@ import numpy as np"""
 
                             continue  # Skip normal processing for Create with Group
 
-                # Skip camera nodes that are in a Sequence - they'll be handled inline in the Sequence
-                if node.type in ["SetCameraOrientation", "MoveCamera", "ZoomCamera"] and node_id in animations_in_sequence:
+                # Skip camera nodes in Sequence/AnimationGroup - handled inline
+                if node.type in ["SetCameraOrientation", "MoveCamera", "ZoomCamera"] and (node_id in animations_in_sequence or node_id in animations_in_group):
                     continue
 
+                # Skip animation nodes in Sequence - they'll be generated inline
+                # (AnimationGroup needs its variable created here since it collects refs)
+                # Don't skip shape nodes with presentation - they need shape code generated here
+                if node_id in animations_in_sequence and node.type not in ("AnimationGroup", "Sequence"):
+                    if self._is_shape_with_presentation(node):
+                        pass  # Shape code still needed; presentation handled inline in Sequence
+                    else:
+                        # Pre-populate node_mobjects so downstream nodes (e.g. GetVertex)
+                        # can reference the mobject this animation operates on
+                        self._pre_populate_node_mobjects(
+                            node_id, node_instance, input_map, node_map,
+                            node_vars, node_mobjects
+                        )
+                        continue
+
                 var_name = node_vars[node_id]
+
+                # Constant vector nodes and junctions — no code needed
+                if node.type in self.CONST_VEC_TYPES or node.type in self.CONST_VEC_ALIASES or node.type == "Junction":
+                    continue
+
                 code = node_instance.to_manim_code(var_name)
 
                 # Replace input placeholders with actual variable names
@@ -328,13 +425,17 @@ import numpy as np"""
                                 if len(source_outputs) > 1 and source_handle != "default":
                                     source_var = f"{source_var}_{source_handle}"
 
-                        # If source is an animation node (chaining animations)
-                        if source_node and source_node.type in animation_types:
-                            # Look up the actual mobject variable from the source animation
-                            chain_var = node_mobjects.get(source_node_id)
+                        # Resolve through junctions to find the real source for type checks
+                        real_source_id, real_source_node = self._resolve_through_junctions(
+                            source_node_id, source_node, node_map, input_map
+                        )
+
+                        # If real source is an animation node (chaining animations)
+                        if real_source_node and real_source_node.type in animation_types:
+                            # Look up the actual mobject variable from the real source animation
+                            chain_var = node_mobjects.get(real_source_id) or node_mobjects.get(source_node_id)
                             if not chain_var:
-                                # Fallback to naming convention if not found
-                                chain_var = f"{source_var}_mobject"
+                                chain_var = f"{node_vars.get(real_source_id, source_var)}_mobject"
                             if copy_flag and input_name in ("mobject", "source"):
                                 copy_prepend = f"{copy_var_name} = {chain_var}.copy()"
                                 code = code.replace(placeholder, copy_var_name)
@@ -342,18 +443,16 @@ import numpy as np"""
                                 node_mobjects[node_id] = copy_var_name
                             else:
                                 code = code.replace(placeholder, chain_var)
-                                mobject_var = chain_var  # Remember for later
-                                node_mobjects[node_id] = chain_var  # Store for next animation in chain
-                        # If source is a shape/mobject node (start of animation path)
+                                mobject_var = chain_var
+                                node_mobjects[node_id] = chain_var
+                        # If real source is a shape/mobject node (start of animation path)
                         else:
-                            # Check if source outputs shape/mobject type
-                            source_node_class = NODE_REGISTRY.get(source_node.type) if source_node else None
-                            if source_node_class and source_node:
-                                source_instance = source_node_class(**source_node.data)
-                                source_outputs = source_instance.get_outputs()
-                                # Pass through the original shape (no copying)
-                                # Animations modify the original object, making chaining more intuitive
-                                if any(out_type in source_outputs.values() for out_type in ["Mobject", "shape", "mobject", "group"]):
+                            # Use real source (past junctions) for type checking
+                            real_cls = NODE_REGISTRY.get(real_source_node.type) if real_source_node else None
+                            if real_cls and real_source_node:
+                                real_instance = real_cls(**real_source_node.data)
+                                real_outputs = real_instance.get_outputs()
+                                if any(out_type in real_outputs.values() for out_type in ["Mobject", "shape", "mobject", "group"]):
                                     if copy_flag and input_name in ("mobject", "source"):
                                         copy_prepend = f"{copy_var_name} = {source_var}.copy()"
                                         code = code.replace(placeholder, copy_var_name)
@@ -361,8 +460,8 @@ import numpy as np"""
                                         node_mobjects[node_id] = copy_var_name
                                     else:
                                         code = code.replace(placeholder, source_var)
-                                        mobject_var = source_var  # Use original, not a copy
-                                        node_mobjects[node_id] = source_var  # Store original for next animation in chain
+                                        mobject_var = source_var
+                                        node_mobjects[node_id] = source_var
                                 else:
                                     code = code.replace(placeholder, source_var)
                             else:
@@ -413,13 +512,18 @@ import numpy as np"""
                         node_mobjects[node_id] = mobject_var
 
                 # TransformInPlace: resolve {MOVE_TO} and track mobject
-                if node.type == "TransformInPlace":
+                if node.type == "TransformInPlace" and "{MOVE_TO}" in code:
                     target_info = input_map.get((node_id, "param_target"))
                     if target_info:
                         target_var = node_vars[target_info[0]]
+                        code = code.replace("{MOVE_TO}", f"m.move_to(_{var_name}_ctr + alpha * (np.array({target_var}, dtype=float) - _{var_name}_ctr))")
                     else:
-                        target_var = node_instance.target
-                    code = code.replace("{MOVE_TO}", f"{var_name}_target.move_to(np.array({target_var}, dtype=float))")
+                        # No connected target — use node's own target parameter
+                        target_val = getattr(node_instance, 'target', '[0, 0, 0]')
+                        if target_val and target_val != '[0, 0, 0]':
+                            code = code.replace("{MOVE_TO}", f"m.move_to(_{var_name}_ctr + alpha * (np.array({target_val}, dtype=float) - _{var_name}_ctr))")
+                        else:
+                            code = code.replace("{MOVE_TO}", "pass")
                     if mobject_var:
                         node_mobjects[node_id] = mobject_var
 
@@ -516,15 +620,49 @@ import numpy as np"""
                                 else:
                                     code = code.replace(placeholder, "0")
 
-                # DebugPrint: replace unresolved input placeholder with fallback
-                if node.type == "DebugPrint" and "{input_value}" in code:
-                    code = code.replace("{input_value}", '"(no input connected)"')
+                # DebugPrint: inject node ID and replace unresolved input placeholder
+                if node.type == "DebugPrint":
+                    code = code.replace("{node_id}", node_id)
+                    if "{input_value}" in code:
+                        code = code.replace("{input_value}", '"(no input connected)"')
+
+                # FunctionCall: find matching FunctionDef, parse code, build args
+                if node.type == "FunctionCall" and "{FUNC_ARGS}" in code:
+                    func_args = []
+                    for i in range(1, 9):
+                        src = input_map.get((node_id, f"arg_{i}"))
+                        if src:
+                            func_args.append(node_vars[src[0]])
+                    code = code.replace("{FUNC_ARGS}", ", ".join(func_args))
 
                 # Add comment showing execution order
-                lines.append(f"        # Execution: {exec_index}, Order: {node_order}, Type: {node.type}")
+                lines.append(f"        # Execution: {exec_index}, Order: {node_order}, Type: {node.type}, ID: {node.id}")
                 if copy_prepend:
                     lines.append(f"        {copy_prepend}")
                 lines.append(f"        {code}")
+
+                # FunctionCall: extract outputs from returned dict by key names
+                if node.type == "FunctionCall":
+                    # Find matching FunctionDef to get output key names
+                    func_name = node_instance.func_name
+                    func_def_code = None
+                    for fn in self.graph.nodes:
+                        if fn.type == "FunctionDef":
+                            fn_data = fn.data if isinstance(fn.data, dict) else {}
+                            if fn_data.get("func_name") == func_name:
+                                func_def_code = fn_data.get("code", "")
+                                break
+                    if func_def_code:
+                        _, output_keys = parse_function_code(func_def_code)
+                    else:
+                        output_keys = []
+
+                    if output_keys:
+                        for i, key in enumerate(output_keys):
+                            lines.append(f"        {var_name}_out_{i+1} = {var_name}_result['{key}']")
+                    else:
+                        # Fallback: single output
+                        lines.append(f"        {var_name}_out_1 = {var_name}_result")
 
                 # Color node: extract r, g, b outputs only if connected
                 if node.type == "Color":
@@ -591,12 +729,54 @@ import numpy as np"""
                     if getattr(node_instance, 'write_label', False) and shape_label_vars:
                         pending_shape_labels[var_name] = shape_label_vars
 
+                # Create output handle aliases for multi-output nodes
+                # EDGE_SHAPE_SIDES and Line already create their own aliases above
+                if node.type not in EDGE_SHAPE_SIDES and node.type != "Line":
+                    _node_outputs = node_instance.get_outputs()
+                    if len(_node_outputs) > 1:
+                        for _handle_name in _node_outputs:
+                            if _handle_name != "animation":
+                                lines.append(f"        {var_name}_{_handle_name} = {var_name}")
+
+                # Generate presentation animation for shapes with present != "none"
+                present_mode = getattr(node_instance, 'present', 'show')
+                if present_mode != "none" and node.type not in self._animation_types:
+                    present_rt = getattr(node_instance, 'present_run_time', '1.0')
+                    # Only generate presentation variable if NOT in a Sequence
+                    # (Sequence handles presentation inline via _emit_shape_presentation)
+                    if node_id not in animations_in_sequence:
+                        pres_var = f"{var_name}_pres"
+                        PRESENT_MAP = {
+                            "show": None,  # handled inline
+                            "create": f"Create({var_name}, run_time={present_rt})",
+                            "fadein": f"FadeIn({var_name}, run_time={present_rt})",
+                            "write": f"Write({var_name}, run_time={present_rt})",
+                        }
+                        pres_expr = PRESENT_MAP.get(present_mode)
+                        if present_mode == "show":
+                            if node_id in animations_in_group:
+                                pass  # Can't put self.add() in AnimationGroup
+                        elif pres_expr:
+                            lines.append(f"        {pres_var} = {pres_expr}")
+                    # Track the presentation variable for Sequence/AnimationGroup
+                    node_mobjects[node_id] = var_name
+
                 # Handle rendering based on node type
                 outputs = node_instance.get_outputs()
 
                 # Defer LineNode labels for post-animation rendering
                 if node.type == "Line" and getattr(node_instance, 'write_label', False):
                     pending_shape_labels[var_name] = [f'{var_name}_label']
+
+                # Generate center label for shapes that have label but no edge_labels (Circle, RegularPolygon)
+                EDGE_SHAPE_TYPES = {"Triangle", "Square", "Rectangle", "RightTriangle", "IsoscelesTriangle"}
+                if node.type not in EDGE_SHAPE_TYPES and node.type not in self._animation_types:
+                    center_label_text = getattr(node_instance, 'label', '')
+                    if center_label_text:
+                        lbl_font = getattr(node_instance, 'label_font_size', '48.0')
+                        escaped = center_label_text.replace('"', '\\"')
+                        lines.append(f'        {var_name}_label = MathTex(r"{escaped}", font_size={lbl_font})')
+                        lines.append(f'        {var_name}_label.move_to({var_name}.get_center())')
 
                 # Resolve pending label key: strip _shape suffix to match base var
                 _lbl_key = (mobject_var[:-6] if mobject_var and mobject_var.endswith('_shape') else mobject_var) if mobject_var else None
@@ -683,6 +863,206 @@ import numpy as np"""
             for lbl_var in pending_shape_labels.pop(lbl_key):
                 lines.append(f"        self.add({lbl_var})")
 
+    def _emit_animation_inline(self, node_id: str, input_map: dict, node_map: dict,
+                               node_vars: dict, node_mobjects: dict, lines: list,
+                               pending_shape_labels: dict):
+        """Generate animation code inline and play it immediately.
+
+        This is used by Sequences so that animations are created and played
+        back-to-back, ensuring runtime evaluations (e.g. mob.get_center())
+        happen AFTER prior animations in the sequence have played.
+        """
+        node = node_map.get(node_id)
+        if not node:
+            return
+
+        node_class = NODE_REGISTRY[node.type]
+        node_instance = node_class(**node.data)
+        var_name = node_vars[node_id]
+        code = node_instance.to_manim_code(var_name)
+
+        # Resolve input placeholders
+        inputs = node_instance.get_inputs()
+        mobject_var = None
+        copy_flag = getattr(node_instance, 'copy', False)
+        copy_var_name = f"{var_name}_src" if copy_flag else None
+        copy_prepend = None
+
+        for input_name in inputs:
+            placeholder = f"{{input_{input_name}}}"
+            source_info = input_map.get((node_id, input_name))
+            if source_info:
+                source_node_id, source_handle = source_info
+                source_node = node_map.get(source_node_id)
+                source_var = node_vars[source_node_id]
+
+                # Multi-output handle
+                if source_node:
+                    source_node_class = NODE_REGISTRY.get(source_node.type)
+                    if source_node_class:
+                        source_instance = source_node_class(**source_node.data)
+                        source_outputs = source_instance.get_outputs()
+                        if len(source_outputs) > 1 and source_handle != "default":
+                            source_var = f"{source_var}_{source_handle}"
+
+                # Resolve through junctions to find the real source for type checks
+                real_source_id, real_source_node = self._resolve_through_junctions(
+                    source_node_id, source_node, node_map, input_map
+                )
+
+                # Animation chaining
+                if real_source_node and real_source_node.type in self._animation_types:
+                    chain_var = node_mobjects.get(real_source_id) or node_mobjects.get(source_node_id)
+                    if not chain_var:
+                        chain_var = f"{node_vars.get(real_source_id, source_var)}_mobject"
+                    if copy_flag and input_name in ("mobject", "source"):
+                        copy_prepend = f"{copy_var_name} = {chain_var}.copy()"
+                        code = code.replace(placeholder, copy_var_name)
+                        mobject_var = copy_var_name
+                        node_mobjects[node_id] = copy_var_name
+                    else:
+                        code = code.replace(placeholder, chain_var)
+                        mobject_var = chain_var
+                        node_mobjects[node_id] = chain_var
+                else:
+                    real_cls = NODE_REGISTRY.get(real_source_node.type) if real_source_node else None
+                    if real_cls and real_source_node:
+                        real_instance = real_cls(**real_source_node.data)
+                        real_outputs = real_instance.get_outputs()
+                        if any(out_type in real_outputs.values() for out_type in ["Mobject", "shape", "mobject", "group"]):
+                            if copy_flag and input_name in ("mobject", "source"):
+                                copy_prepend = f"{copy_var_name} = {source_var}.copy()"
+                                code = code.replace(placeholder, copy_var_name)
+                                mobject_var = copy_var_name
+                                node_mobjects[node_id] = copy_var_name
+                            else:
+                                code = code.replace(placeholder, source_var)
+                                mobject_var = source_var
+                                node_mobjects[node_id] = source_var
+                        else:
+                            code = code.replace(placeholder, source_var)
+                    else:
+                        code = code.replace(placeholder, source_var)
+
+        # Resolve {MOVE_TO} for TransformInPlace
+        if node.type == "TransformInPlace" and "{MOVE_TO}" in code:
+            target_info = input_map.get((node_id, "param_target"))
+            if target_info:
+                target_var = node_vars[target_info[0]]
+                code = code.replace("{MOVE_TO}", f"m.move_to(_{var_name}_ctr + alpha * (np.array({target_var}, dtype=float) - _{var_name}_ctr))")
+            else:
+                # No connected target — use node's own target parameter
+                target_val = getattr(node_instance, 'target', '[0, 0, 0]')
+                if target_val and target_val != '[0, 0, 0]':
+                    code = code.replace("{MOVE_TO}", f"m.move_to(_{var_name}_ctr + alpha * (np.array({target_val}, dtype=float) - _{var_name}_ctr))")
+                else:
+                    code = code.replace("{MOVE_TO}", "pass")
+            if mobject_var:
+                node_mobjects[node_id] = mobject_var
+
+        # Resolve {MATRIX_2X2} and {TRANSLATION} for Transform
+        if node.type == "Transform" and ("{MATRIX_2X2}" in code or "{TRANSLATION}" in code):
+            matrix_info = input_map.get((node_id, "matrix"))
+            matrix_source_id = matrix_info[0] if matrix_info else None
+            if matrix_source_id:
+                matrix_var = node_vars[matrix_source_id]
+                code = code.replace("{MATRIX_2X2}", f"{matrix_var}[:3, :3]")
+                code = code.replace("{TRANSLATION}", f"{matrix_var}[:3, 3]")
+            else:
+                matrix_2x2 = f"[[{node_instance.m11}, {node_instance.m12}], [{node_instance.m21}, {node_instance.m22}]]"
+                translation = f"[{node_instance.m13}, {node_instance.m23}, 0]"
+                code = code.replace("{MATRIX_2X2}", matrix_2x2)
+                code = code.replace("{TRANSLATION}", translation)
+            if mobject_var:
+                node_mobjects[node_id] = mobject_var
+
+        # Resolve {ABOUT_POINT} for Rotate and Scale
+        if node.type in ("Rotate", "Scale") and "{ABOUT_POINT}" in code:
+            about_point_info = input_map.get((node_id, "param_about_point"))
+            about_point_source_id = about_point_info[0] if about_point_info else None
+            if about_point_source_id:
+                about_val = node_vars[about_point_source_id]
+            elif node_instance.about_point == "self":
+                about_val = f"{mobject_var}.get_center()" if mobject_var else "ORIGIN"
+            else:
+                point_map = {
+                    "center": f"{mobject_var}.get_center()" if mobject_var else "ORIGIN",
+                    "min": f"{mobject_var}.get_corner(DL)" if mobject_var else "DL",
+                    "max": f"{mobject_var}.get_corner(UR)" if mobject_var else "UR",
+                    "origin": "ORIGIN"
+                }
+                about_val = point_map.get(node_instance.about_point, f"{mobject_var}.get_center()" if mobject_var else "ORIGIN")
+            if about_val is None:
+                code = code.replace("{ABOUT_POINT}", "")
+            elif node.type == "Rotate":
+                code = code.replace("{ABOUT_POINT}run_time", f"about_point={about_val}, run_time")
+                code = code.replace("{ABOUT_POINT}", f", about_point={about_val}")
+            else:
+                code = code.replace("{ABOUT_POINT}", f", about_point={about_val}")
+
+        # Resolve parameter inputs
+        for input_name in inputs:
+            if input_name.startswith("param_"):
+                param_name = input_name[6:]
+                placeholder = f"{{param_{param_name}}}"
+                source_info = input_map.get((node_id, input_name))
+                source_node_id = source_info[0] if source_info else None
+                if source_node_id:
+                    source_var = node_vars[source_node_id]
+                    if param_name == "angle_rad":
+                        code = code.replace(placeholder, f"np.radians({source_var})")
+                    else:
+                        code = code.replace(placeholder, source_var)
+                else:
+                    if param_name == "angle_rad":
+                        angle_str = getattr(node_instance, "angle", "90.0")
+                        code = code.replace(placeholder, f"np.radians({angle_str})")
+                    elif param_name == "color":
+                        color_val = getattr(node_instance, "color", "#FFFFFF")
+                        if color_val.startswith('#'):
+                            code = code.replace(placeholder, f'"{color_val}"')
+                        else:
+                            code = code.replace(placeholder, color_val)
+                    elif hasattr(node_instance, param_name):
+                        param_value = getattr(node_instance, param_name)
+                        code = code.replace(placeholder, str(param_value))
+                    else:
+                        if param_name == "position" and hasattr(node_instance, "x"):
+                            x = getattr(node_instance, "x", "0")
+                            y = getattr(node_instance, "y", "0")
+                            z = getattr(node_instance, "z", "0")
+                            code = code.replace(placeholder, f"[{x}, {y}, {z}]")
+                        elif param_name == "target" and hasattr(node_instance, "target_x"):
+                            code = code.replace(placeholder, f"[{getattr(node_instance, 'target_x', '0')}, {getattr(node_instance, 'target_y', '0')}, {getattr(node_instance, 'target_z', '0')}]")
+                        elif param_name == "axis" and hasattr(node_instance, "axis_x"):
+                            code = code.replace(placeholder, f"[{getattr(node_instance, 'axis_x', '0')}, {getattr(node_instance, 'axis_y', '0')}, {getattr(node_instance, 'axis_z', '1')}]")
+                        else:
+                            code = code.replace(placeholder, "0")
+
+        # Emit code
+        if copy_prepend:
+            lines.append(f"        {copy_prepend}")
+        lines.append(f"        {code}")
+
+        # Play the animation
+        lines.append(f"        self.play({var_name})")
+
+        # State extraction after animation plays
+        if node.type == "MoveTo" and mobject_var:
+            lines.append(f"        {var_name}_position = list({mobject_var}.get_center())")
+        elif node.type == "Rotate" and mobject_var:
+            angle_str = getattr(node_instance, "angle", "90.0")
+            lines.append(f"        {var_name}_angle = {angle_str}")
+        elif node.type == "Scale" and mobject_var:
+            sf_str = getattr(node_instance, "scale_factor", "2.0")
+            lines.append(f"        {var_name}_scale_factor = {sf_str}")
+
+        # Emit deferred labels
+        _lbl_key = (mobject_var[:-6] if mobject_var and mobject_var.endswith('_shape') else mobject_var) if mobject_var else None
+        if _lbl_key and _lbl_key in pending_shape_labels:
+            for lbl_var in pending_shape_labels.pop(_lbl_key):
+                lines.append(f"        self.add({lbl_var})")
+
     def _emit_sequence_animations(self, node_id: str, input_map: dict, node_map: dict,
                                   node_vars: dict, node_mobjects: dict, lines: list,
                                   pending_shape_labels: dict = {},
@@ -710,40 +1090,95 @@ import numpy as np"""
                                                node_mobjects, lines, pending_shape_labels,
                                                animations_in_sequence, animations_in_group)
             elif source_node and source_node.type == "Show":
-                mobject_var = f"{source_var}_mobject"
-                lines.append(f"        self.add({mobject_var})")
+                # Show node: resolve mobject inline
+                mob_var = node_mobjects.get(source_node_id)
+                if not mob_var:
+                    mob_var = f"{source_var}_mobject"
+                lines.append(f"        self.add({mob_var})")
+                # Add deferred labels
+                _lbl_key = (mob_var[:-6] if mob_var.endswith('_shape') else mob_var) if mob_var else None
+                if _lbl_key and _lbl_key in pending_shape_labels:
+                    for lbl_var in pending_shape_labels.pop(_lbl_key):
+                        lines.append(f"        self.add({lbl_var})")
             elif source_node and source_node.type in ["SetCameraOrientation", "MoveCamera", "ZoomCamera"]:
-                lines.append(f"        # Camera movement from {source_node.type}")
-                source_node_class = NODE_REGISTRY[source_node.type]
-                source_instance = source_node_class(**source_node.data)
-
-                if source_node.type == "SetCameraOrientation":
-                    phi_rad = f"np.radians({source_instance.phi})"
-                    theta_rad = f"np.radians({source_instance.theta})"
-                    gamma_rad = f"np.radians({source_instance.gamma})"
-                    if source_instance.run_time != "0" and source_instance.run_time != "0.0":
-                        lines.append(f"        self.move_camera(phi={phi_rad}, theta={theta_rad}, gamma={gamma_rad}, run_time={source_instance.run_time})")
-                    else:
-                        lines.append(f"        self.set_camera_orientation(phi={phi_rad}, theta={theta_rad}, gamma={gamma_rad})")
-                elif source_node.type == "MoveCamera":
-                    lines.append(f"        self.move_camera(frame_center={source_instance.position}, run_time={source_instance.run_time})")
-                elif source_node.type == "ZoomCamera":
-                    lines.append(f"        self.move_camera(zoom={source_instance.scale}, run_time={source_instance.run_time})")
+                self._emit_camera_command(source_node, lines)
+            elif source_node and source_node.type == "AnimationGroup":
+                # AnimationGroup was pre-created in main loop, just play it
+                lines.append(f"        self.play({source_var})")
+            elif source_node and self._is_shape_with_presentation(source_node):
+                # Shape with built-in presentation: emit presentation inline
+                self._emit_shape_presentation(source_node_id, node_map, node_vars,
+                                              pending_shape_labels, lines)
             else:
-                # Play upstream chain animations first (animations connected via shape output)
+                # Regular animation: generate code inline and play immediately
+                # First, handle upstream chain animations (not in any Sequence or Group)
                 chain = self._collect_chain_animations(source_node_id, input_map, node_map,
                                                        animations_in_sequence, animations_in_group)
                 for chain_id in chain:
-                    self._play_with_labels(chain_id, node_vars[chain_id], node_mobjects,
-                                           pending_shape_labels, lines)
+                    self._emit_animation_inline(chain_id, input_map, node_map, node_vars,
+                                                node_mobjects, lines, pending_shape_labels)
 
-                # Play the directly-connected animation
-                self._play_with_labels(source_node_id, source_var, node_mobjects,
-                                       pending_shape_labels, lines)
+                # Generate and play this animation inline
+                self._emit_animation_inline(source_node_id, input_map, node_map, node_vars,
+                                            node_mobjects, lines, pending_shape_labels)
 
             # Add wait time after each animation
             if wait_time != "0" and wait_time != "0.0":
                 lines.append(f"        self.wait({wait_time})")
+
+    def _emit_camera_command(self, cam_node, lines: list):
+        """Emit a self.move_camera() or self.set_camera_orientation() call for a camera node."""
+        cam_class = NODE_REGISTRY[cam_node.type]
+        inst = cam_class(**cam_node.data)
+        lines.append(f"        # Camera movement from {cam_node.type}")
+        if cam_node.type == "SetCameraOrientation":
+            phi_rad = f"np.radians({inst.phi})"
+            theta_rad = f"np.radians({inst.theta})"
+            gamma_rad = f"np.radians({inst.gamma})"
+            if inst.run_time != "0" and inst.run_time != "0.0":
+                lines.append(f"        self.move_camera(phi={phi_rad}, theta={theta_rad}, gamma={gamma_rad}, run_time={inst.run_time})")
+            else:
+                lines.append(f"        self.set_camera_orientation(phi={phi_rad}, theta={theta_rad}, gamma={gamma_rad})")
+        elif cam_node.type == "MoveCamera":
+            lines.append(f"        self.move_camera(frame_center={inst.position}, run_time={inst.run_time})")
+        elif cam_node.type == "ZoomCamera":
+            lines.append(f"        self.move_camera(zoom={inst.scale}, run_time={inst.run_time})")
+
+    def _is_shape_with_presentation(self, node) -> bool:
+        """Check if a node is a shape with built-in presentation enabled."""
+        if node.type in self._animation_types:
+            return False
+        # Check the data dict directly
+        node_data = node.data if isinstance(node.data, dict) else {}
+        present = node_data.get('present', 'create')
+        return present != 'none' and present is not None
+
+    def _emit_shape_presentation(self, node_id: str, node_map: dict, node_vars: dict,
+                                 pending_shape_labels: dict, lines: list):
+        """Emit presentation animation for a shape with present != 'none'."""
+        node = node_map.get(node_id)
+        if not node:
+            return
+
+        node_class = NODE_REGISTRY[node.type]
+        node_instance = node_class(**node.data)
+        var_name = node_vars[node_id]
+        present_mode = getattr(node_instance, 'present', 'show')
+        present_rt = getattr(node_instance, 'present_run_time', '1.0')
+
+        if present_mode == "show":
+            lines.append(f"        self.add({var_name})")
+        elif present_mode == "create":
+            lines.append(f"        self.play(Create({var_name}, run_time={present_rt}))")
+        elif present_mode == "fadein":
+            lines.append(f"        self.play(FadeIn({var_name}, run_time={present_rt}))")
+        elif present_mode == "write":
+            lines.append(f"        self.play(Write({var_name}, run_time={present_rt}))")
+
+        # Emit deferred labels after the animation completes
+        if var_name in pending_shape_labels:
+            for lbl_var in pending_shape_labels.pop(var_name):
+                lines.append(f"        self.add({lbl_var})")
 
     def _find_root_mobject(self, anim_node_id: str, input_map: dict, node_vars: dict, node_map: dict) -> str:
         """Find the root mobject in an animation chain by walking backwards"""
@@ -779,17 +1214,72 @@ import numpy as np"""
         # Fallback
         return node_vars.get(anim_node_id, "unknown")
 
+    @staticmethod
+    def _resolve_through_junctions(source_node_id, source_node, node_map, input_map):
+        """Follow junction chain to find the real (non-Junction) source node."""
+        visited = set()
+        current_id = source_node_id
+        current_node = source_node
+        while current_node and current_node.type == "Junction" and current_id not in visited:
+            visited.add(current_id)
+            upstream = input_map.get((current_id, "in"))
+            if upstream:
+                current_id = upstream[0]
+                current_node = node_map.get(current_id)
+            else:
+                break
+        return current_id, current_node
+
+    def _pre_populate_node_mobjects(self, node_id: str, node_instance, input_map: dict,
+                                     node_map: dict, node_vars: dict, node_mobjects: dict):
+        """Pre-populate node_mobjects for a skipped animation node.
+
+        When an animation is in a Sequence, it's skipped in the main loop.
+        But downstream non-animation nodes (e.g. GetVertex) may need to
+        reference the mobject this animation operates on. This method
+        resolves the input mobject and stores it in node_mobjects so the
+        fallback f"{var}_mobject" pattern is never reached.
+        """
+        for handle in ("mobject", "source"):
+            source_info = input_map.get((node_id, handle))
+            if not source_info:
+                continue
+            source_node_id, source_handle = source_info
+            source_node = node_map.get(source_node_id)
+            source_var = node_vars.get(source_node_id, "")
+
+            # Multi-output handle
+            if source_node:
+                src_cls = NODE_REGISTRY.get(source_node.type)
+                if src_cls:
+                    src_inst = src_cls(**source_node.data)
+                    src_outs = src_inst.get_outputs()
+                    if len(src_outs) > 1 and source_handle != "default":
+                        source_var = f"{source_var}_{source_handle}"
+
+            # Resolve through junctions
+            real_id, real_node = self._resolve_through_junctions(
+                source_node_id, source_node, node_map, input_map
+            )
+
+            # If upstream is an animation, use its tracked mobject
+            if real_node and real_node.type in self._animation_types:
+                mob_var = node_mobjects.get(real_id) or node_mobjects.get(source_node_id)
+                if mob_var:
+                    node_mobjects[node_id] = mob_var
+                else:
+                    # Fallback: use the source variable directly
+                    node_mobjects[node_id] = source_var
+            else:
+                node_mobjects[node_id] = source_var
+            break  # Only process the first mobject/source input
+
     def _get_node_by_id(self, node_id: str):
         """Find node by ID"""
         for node in self.graph.nodes:
             if node.id == node_id:
                 return node
         return None
-
-    def _get_short_id(self, node_id: str) -> str:
-        """Generate a short hash ID from node_id"""
-        import hashlib
-        return hashlib.md5(node_id.encode()).hexdigest()[:6]
 
     def _sanitize_var_name(self, name: str) -> str:
         """Sanitize a string into a valid Python identifier"""
@@ -804,13 +1294,24 @@ import numpy as np"""
             sanitized = 'node'
         return sanitized
 
+    # Manim built-in constant vectors — singleton names, no code generated
+    CONST_VEC_TYPES = {"RIGHT", "LEFT", "UP", "DOWN", "OUT", "IN", "ORIGIN"}
+    CONST_VEC_ALIASES = {"X": "RIGHT", "Y": "UP", "Z": "OUT"}
+
     def _safe_var_name(self, node_id: str, node_type: str, node_data: dict = {}) -> str:
         """Generate a safe Python variable name, preferring user-given name"""
+        # Built-in constant vectors always use their Manim name
+        if node_type in self.CONST_VEC_TYPES:
+            return node_type
+        if node_type in self.CONST_VEC_ALIASES:
+            return self.CONST_VEC_ALIASES[node_type]
+
         # Use user-given name if available
         if node_data and node_data.get('name'):
             return self._sanitize_var_name(node_data['name'])
 
-        # Fallback to type + hash
+        # Sequential counter per type: circle_1, circle_2, etc.
         prefix = node_type.lower().replace(" ", "_")
-        hash_suffix = self._get_short_id(node_id)
-        return f"{prefix}_{hash_suffix}"
+        count = self._type_counters.get(prefix, 0) + 1
+        self._type_counters[prefix] = count
+        return f"{prefix}_{count}"

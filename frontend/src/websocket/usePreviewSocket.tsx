@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import ReconnectingWebSocket from 'reconnecting-websocket';
 import { usePreviewStore } from '../store/usePreviewStore';
+import { useGraphStore } from '../store/useGraphStore';
 import { Graph } from '../types/graph';
 
 export function usePreviewWebSocket() {
   const ws = useRef<ReconnectingWebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const { setRendering, setVideoUrl, setError, addLog, addDebugLog, clearLog, reset, setGeneratedCode } = usePreviewStore();
+  const updateNodeData = useGraphStore((s) => s.updateNodeData);
+  const markErrorEdges = useGraphStore((s) => s.markErrorEdges);
+  const clearErrorEdges = useGraphStore((s) => s.clearErrorEdges);
 
   useEffect(() => {
     // Determine WebSocket URL
@@ -37,13 +41,19 @@ export function usePreviewWebSocket() {
             addLog(message.message);
             break;
 
-          case 'progress':
-            if (message.message.startsWith('[DEBUG] ')) {
+          case 'progress': {
+            const debugMatch = message.message.match(/^\[DEBUG:([^\]]+)\] (.*)$/);
+            if (debugMatch) {
+              const [, nodeId, debugMsg] = debugMatch;
+              addDebugLog(debugMsg);
+              updateNodeData(nodeId, { debugOutput: debugMsg });
+            } else if (message.message.startsWith('[DEBUG] ')) {
               addDebugLog(message.message.slice(8));
             } else {
               addLog(message.message);
             }
             break;
+          }
 
           case 'complete':
             setRendering(false);
@@ -54,8 +64,12 @@ export function usePreviewWebSocket() {
 
           case 'error':
             setRendering(false);
-            setError(message.message);
+            setError(message.message, message.node_id || null);
             if (message.code) setGeneratedCode(message.code);
+            if (message.node_id) {
+              updateNodeData(message.node_id, { error: message.message });
+              markErrorEdges(message.node_id);
+            }
             addLog(`Error: ${message.message}`);
             break;
 
@@ -86,12 +100,21 @@ export function usePreviewWebSocket() {
       clearInterval(pingInterval);
       ws.current?.close();
     };
-  }, [setRendering, setVideoUrl, setError, addLog, addDebugLog, setGeneratedCode]);
+  }, [setRendering, setVideoUrl, setError, addLog, addDebugLog, setGeneratedCode, updateNodeData, markErrorEdges]);
 
   const sendRenderRequest = (graph: Graph) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
       setError('WebSocket not connected');
       return;
+    }
+
+    // Clear error highlights and debug output from all nodes and edges
+    clearErrorEdges();
+    const nodes = useGraphStore.getState().nodes;
+    for (const node of nodes) {
+      if (node.data.error || node.data.debugOutput) {
+        updateNodeData(node.id, { error: undefined, debugOutput: undefined });
+      }
     }
 
     // Reset preview state

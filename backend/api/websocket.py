@@ -63,11 +63,14 @@ async def websocket_preview(websocket: WebSocket):
                     })
 
                 except RenderError as e:
-                    await websocket.send_json({
+                    error_payload = {
                         "type": "error",
                         "message": f"Render failed: {str(e)}",
-                        "code": e.code
-                    })
+                        "code": e.code,
+                    }
+                    if e.node_id:
+                        error_payload["node_id"] = e.node_id
+                    await websocket.send_json(error_payload)
                 except Exception as e:
                     await websocket.send_json({
                         "type": "error",

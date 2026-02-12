@@ -1,4 +1,6 @@
-import { Save, Download, FileText, Upload, FileDown, Layout, Code, Braces, AlertCircle, BookOpen } from 'lucide-react';
+import { Save, Download, FileText, Upload, FileDown, Layout, Code, Braces, AlertCircle, BookOpen, Terminal, Minimize2, Maximize2, Image, ChevronDown, FolderOpen } from 'lucide-react';
+import { toPng, toSvg } from 'html-to-image';
+import { getNodesBounds, getViewportForBounds } from 'reactflow';
 import { useGraphStore } from '../../store/useGraphStore';
 import { useUIStore } from '../../store/useUIStore';
 import { usePreviewStore } from '../../store/usePreviewStore';
@@ -6,14 +8,21 @@ import { useState, useRef, useEffect } from 'react';
 import { apiClient } from '../../api/client';
 
 export default function TopBar() {
-  const { graph, isDirty, isSaving, saveGraph, nodes, edges, setNodes, setEdges } = useGraphStore();
-  const { mainView, setMainView } = useUIStore();
+  const { graph, isDirty, isSaving, saveGraph, nodes, edges, setNodes, setEdges, renameGraph } = useGraphStore();
+  const { mainView, setMainView, showDebugPanel, toggleDebugPanel, viewport, setViewport } = useUIStore();
   const error = usePreviewStore((state) => state.error);
+  const generatedCode = usePreviewStore((state) => state.generatedCode);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportQuality, setExportQuality] = useState('1080p');
   const [exportFps, setExportFps] = useState(30);
+  const [exportFormat, setExportFormat] = useState<'mp4' | 'gif'>('mp4');
   const [isExporting, setIsExporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const downloadRef = useRef<HTMLDivElement>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [showExamplesMenu, setShowExamplesMenu] = useState(false);
   const [examplesList, setExamplesList] = useState<Array<{ id: string; name: string; description: string }>>([]);
   const examplesRef = useRef<HTMLDivElement>(null);
@@ -30,6 +39,19 @@ export default function TopBar() {
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showExamplesMenu]);
+
+  // Close download menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (downloadRef.current && !downloadRef.current.contains(event.target as Node)) {
+        setShowDownloadMenu(false);
+      }
+    };
+    if (showDownloadMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDownloadMenu]);
 
   const handleShowExamples = async () => {
     if (showExamplesMenu) {
@@ -50,8 +72,12 @@ export default function TopBar() {
       const example = await apiClient.getExample(exampleId);
       const graphData = example.graph;
 
-      // Fetch node definitions to get inputs/outputs/category
-      const uniqueTypes = [...new Set(graphData.nodes.map((n: any) => n.data.type))] as string[];
+      // Fetch node definitions to get inputs/outputs/category (skip frame nodes)
+      const uniqueTypes = [...new Set(
+        graphData.nodes
+          .filter((n: any) => n.type !== '__groupFrame')
+          .map((n: any) => n.data.type)
+      )] as string[];
       const nodeDefs: Record<string, any> = {};
       await Promise.all(
         uniqueTypes.map(async (t: string) => {
@@ -60,6 +86,16 @@ export default function TopBar() {
       );
 
       const loadedNodes = graphData.nodes.map((n: any) => {
+        if (n.type === '__groupFrame') {
+          return {
+            id: n.id,
+            type: 'groupFrame',
+            position: n.position,
+            data: { ...n.data },
+            ...(n.style && { style: n.style }),
+            ...(n.zIndex !== undefined && { zIndex: n.zIndex }),
+          };
+        }
         const def = nodeDefs[n.data.type];
         return {
           id: n.id,
@@ -71,6 +107,8 @@ export default function TopBar() {
             inputs: def?.inputs,
             outputs: def?.outputs,
           },
+          ...(n.parentNode && { parentNode: n.parentNode }),
+
         };
       });
 
@@ -84,10 +122,46 @@ export default function TopBar() {
 
       setNodes(loadedNodes);
       setEdges(loadedEdges);
+      if (graphData.name) renameGraph(graphData.name);
       setShowExamplesMenu(false);
     } catch (err) {
       console.error('Failed to load example:', err);
       alert('Failed to load example');
+    }
+  };
+
+  const handleDownloadImage = async (format: 'png' | 'svg') => {
+    const viewportEl = document.querySelector('.react-flow__viewport') as HTMLElement;
+    if (!viewportEl || nodes.length === 0) return;
+
+    const padding = 50;
+    const nodesBounds = getNodesBounds(nodes);
+    const imageWidth = nodesBounds.width + padding * 2;
+    const imageHeight = nodesBounds.height + padding * 2;
+    const viewport = getViewportForBounds(nodesBounds, imageWidth, imageHeight, 0.5, 2, padding);
+
+    const dataFn = format === 'png' ? toPng : toSvg;
+    try {
+      const dataUrl = await dataFn(viewportEl, {
+        backgroundColor: '#030712',
+        width: imageWidth,
+        height: imageHeight,
+        style: {
+          width: `${imageWidth}px`,
+          height: `${imageHeight}px`,
+          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+        },
+        filter: (node: HTMLElement) => {
+          const classes = node.classList?.toString() || '';
+          return !classes.includes('react-flow__minimap') && !classes.includes('react-flow__controls');
+        },
+      });
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `${graph?.name || 'graph'}.${format}`;
+      a.click();
+    } catch (err) {
+      console.error('Image export failed:', err);
     }
   };
 
@@ -105,9 +179,12 @@ export default function TopBar() {
       name: graph?.name || 'untitled',
       nodes: nodes.map(n => ({
         id: n.id,
-        type: n.data.type,
+        type: n.type === 'groupFrame' ? '__groupFrame' : n.data.type,
         position: n.position,
         data: n.data,
+        ...(n.parentNode && { parentNode: n.parentNode }),
+        ...(n.style && { style: n.style }),
+        ...(n.zIndex !== undefined && { zIndex: n.zIndex }),
       })),
       edges: edges.map(e => ({
         id: e.id,
@@ -116,7 +193,9 @@ export default function TopBar() {
         sourceHandle: e.sourceHandle,
         targetHandle: e.targetHandle,
       })),
-      settings: {},
+      settings: {
+        ...(viewport && { viewport }),
+      },
     };
 
     const blob = new Blob([JSON.stringify(graphData, null, 2)], { type: 'application/json' });
@@ -127,6 +206,20 @@ export default function TopBar() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPython = () => {
+    if (!generatedCode) return;
+    const filename = graph?.name
+      ? `${graph.name.replace(/[^a-z0-9]/gi, '_')}_manim.py`
+      : 'generated_scene.py';
+    const blob = new Blob([generatedCode], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -142,9 +235,13 @@ export default function TopBar() {
         // Convert to React Flow format
         const loadedNodes = graphData.nodes.map((n: any) => ({
           id: n.id,
-          type: 'custom',
+          type: n.type === '__groupFrame' ? 'groupFrame' : 'custom',
           position: n.position,
-          data: n.data,
+          data: n.type === '__groupFrame' ? { ...n.data } : n.data,
+          ...(n.parentNode && { parentNode: n.parentNode }),
+
+          ...(n.style && { style: n.style }),
+          ...(n.zIndex !== undefined && { zIndex: n.zIndex }),
         }));
 
         const loadedEdges = graphData.edges.map((e: any) => ({
@@ -157,6 +254,7 @@ export default function TopBar() {
 
         setNodes(loadedNodes);
         setEdges(loadedEdges);
+        setViewport(graphData.settings?.viewport || null);
 
         alert(`Loaded graph: ${graphData.name}`);
       } catch (error) {
@@ -178,15 +276,19 @@ export default function TopBar() {
 
     setIsExporting(true);
     try {
-      // Convert graph to export format
+      // Convert graph to export format (same serialization as saveGraph)
       const exportData = {
         id: graph.id,
         name: graph.name,
         nodes: nodes.map(n => ({
           id: n.id,
-          type: n.data.type,
+          type: n.type === 'groupFrame' ? '__groupFrame' : n.data.type,
           position: n.position,
-          data: n.data,
+          data: { ...n.data },
+          ...(n.parentNode && { parentNode: n.parentNode }),
+
+          ...(n.style && { style: n.style }),
+          ...(n.zIndex !== undefined && { zIndex: n.zIndex }),
         })),
         edges: edges.map(e => ({
           id: e.id,
@@ -208,6 +310,7 @@ export default function TopBar() {
           graph: exportData,
           quality: exportQuality,
           fps: exportFps,
+          format: exportFormat,
         }),
       });
 
@@ -283,12 +386,66 @@ export default function TopBar() {
           <AlertCircle size={16} />
           Errors
         </button>
+        <button
+          onClick={toggleDebugPanel}
+          className={`flex items-center gap-2 px-3 py-1 rounded text-sm transition-colors ${
+            showDebugPanel
+              ? 'bg-purple-600 text-white'
+              : 'text-gray-300 hover:text-white'
+          }`}
+        >
+          <Terminal size={16} />
+          Log
+        </button>
       </div>
 
-      <div className="text-sm text-gray-400">
-        {graph?.name || 'Untitled'}
-        {isDirty && <span className="ml-2 text-yellow-500">•</span>}
-      </div>
+      <button
+        onClick={() => {
+          const allCollapsed = nodes.every((n) => n.type === 'groupFrame' || n.data.viewMode === 'collapsed');
+          const newMode = allCollapsed ? 'normal' : 'collapsed';
+          setNodes(nodes.map((n) => n.type === 'groupFrame' ? n : { ...n, data: { ...n.data, viewMode: newMode } }));
+        }}
+        className="flex items-center gap-1.5 px-2 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white text-sm rounded transition-colors"
+        title={nodes.every((n) => n.type === 'groupFrame' || n.data.viewMode === 'collapsed') ? "Expand all nodes" : "Collapse all nodes"}
+      >
+        {nodes.every((n) => n.type === 'groupFrame' || n.data.viewMode === 'collapsed') ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+      </button>
+
+      {isEditingName ? (
+        <input
+          ref={nameInputRef}
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          onBlur={() => {
+            const trimmed = editName.trim();
+            if (trimmed) renameGraph(trimmed);
+            setIsEditingName(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const trimmed = editName.trim();
+              if (trimmed) renameGraph(trimmed);
+              setIsEditingName(false);
+            } else if (e.key === 'Escape') {
+              setIsEditingName(false);
+            }
+          }}
+          className="text-sm text-white bg-gray-700 border border-blue-500 rounded px-2 py-0.5 outline-none w-48"
+          autoFocus
+        />
+      ) : (
+        <div
+          className="text-sm text-gray-400 cursor-pointer hover:text-gray-200 transition-colors"
+          onDoubleClick={() => {
+            setEditName(graph?.name || 'Untitled');
+            setIsEditingName(true);
+          }}
+          title="Double-click to rename"
+        >
+          {graph?.name || 'Untitled'}
+          {isDirty && <span className="ml-2 text-yellow-500">•</span>}
+        </div>
+      )}
 
       <button
         onClick={handleSave}
@@ -297,15 +454,6 @@ export default function TopBar() {
       >
         <Save size={16} />
         {isSaving ? 'Saving...' : 'Save'}
-      </button>
-
-      <button
-        onClick={handleDownloadJSON}
-        className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors"
-        title="Download as JSON"
-      >
-        <FileDown size={16} />
-        Download
       </button>
 
       <button
@@ -350,12 +498,68 @@ export default function TopBar() {
         )}
       </div>
 
+      <div className="relative flex" ref={downloadRef}>
+        <button
+          onClick={handleDownloadJSON}
+          className="flex items-center gap-1.5 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-l transition-colors"
+        >
+          <FileDown size={16} />
+          Download
+        </button>
+        <button
+          onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+          className="flex items-center px-1.5 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-r border-l border-gray-600 transition-colors"
+        >
+          <ChevronDown size={12} />
+        </button>
+        {showDownloadMenu && (
+          <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[140px]">
+            <button
+              onClick={() => { handleDownloadJSON(); setShowDownloadMenu(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 transition-colors"
+            >
+              <Braces size={14} />
+              JSON
+            </button>
+            <button
+              onClick={() => { handleDownloadPython(); setShowDownloadMenu(false); }}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${generatedCode ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-500 cursor-not-allowed'}`}
+              disabled={!generatedCode}
+            >
+              <Code size={14} />
+              Python
+            </button>
+            <button
+              onClick={() => { handleDownloadImage('png'); setShowDownloadMenu(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 transition-colors"
+            >
+              <Image size={14} />
+              PNG
+            </button>
+            <button
+              onClick={() => { handleDownloadImage('svg'); setShowDownloadMenu(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 transition-colors"
+            >
+              <Image size={14} />
+              SVG
+            </button>
+          </div>
+        )}
+      </div>
+
       <button
         onClick={() => setShowExportDialog(true)}
-        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors"
+        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-l transition-colors"
       >
         <Download size={16} />
         Export Video
+      </button>
+      <button
+        onClick={() => fetch('/api/open-folder/exports', { method: 'POST' })}
+        className="flex items-center px-2 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-r border-l border-green-500 transition-colors"
+        title="Open exports folder"
+      >
+        <FolderOpen size={16} />
       </button>
 
       {/* Export Dialog */}
@@ -401,9 +605,26 @@ export default function TopBar() {
               </select>
             </div>
 
+            {/* Format selector */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Format
+              </label>
+              <select
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as 'mp4' | 'gif')}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="mp4">MP4 (Video)</option>
+                <option value="gif">GIF (Animated Image)</option>
+              </select>
+            </div>
+
             {/* Info text */}
             <p className="text-sm text-gray-400 mb-6">
-              Export will generate a high-quality MP4 video. This may take several minutes depending on complexity and quality settings.
+              {exportFormat === 'gif'
+                ? 'Export will generate an animated GIF. File sizes may be large for long animations.'
+                : 'Export will generate a high-quality MP4 video. This may take several minutes depending on complexity and quality settings.'}
             </p>
 
             {/* Action buttons */}

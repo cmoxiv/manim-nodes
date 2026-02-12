@@ -13,10 +13,37 @@ export default function ErrorPanel() {
     });
   };
 
+  const handleDownload = () => {
+    if (!error) return;
+    const blob = new Blob([error], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'render_error.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="h-full w-full flex flex-col bg-gray-900">
-      <div className="p-4 border-b border-gray-700 flex-shrink-0">
+      <div className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
         <h3 className="text-lg font-semibold text-white">Errors</h3>
+        {error && (
+          <div className="flex gap-2 flex-shrink-0 ml-2">
+            <button
+              onClick={handleCopy}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-colors whitespace-nowrap"
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+            <button
+              onClick={handleDownload}
+              className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-colors whitespace-nowrap"
+            >
+              Download
+            </button>
+          </div>
+        )}
       </div>
       <div className="flex-1 overflow-auto min-h-0">
         {error ? (
@@ -29,15 +56,7 @@ export default function ErrorPanel() {
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-semibold text-red-400">Render Error</h3>
-                    <button
-                      onClick={handleCopy}
-                      className="px-2 py-1 text-xs rounded border border-gray-600 text-gray-400 hover:text-white hover:border-gray-400 transition-colors"
-                    >
-                      {copied ? 'Copied!' : 'Copy'}
-                    </button>
-                  </div>
+                  <h3 className="text-lg font-semibold text-red-400 mb-2">Render Error</h3>
                   <div className="text-gray-300 font-mono text-sm whitespace-pre-wrap bg-gray-900/50 p-4 rounded border border-red-700/50">
                     {error}
                   </div>

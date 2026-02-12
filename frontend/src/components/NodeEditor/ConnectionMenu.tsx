@@ -56,6 +56,9 @@ export default function ConnectionMenu({
     // Exact match
     if (outputType === inputType) return true;
 
+    // "Any" is universally compatible (e.g. Junction pass-through)
+    if (outputType === 'Any' || inputType === 'Any') return true;
+
     // Type hierarchy
     const typeHierarchy: Record<string, string[]> = {
       'Mobject': ['Mobject', 'shape', 'mobject', 'group', 'text', 'axes', 'plane', 'tex', 'vector', 'dot', 'arrow'],

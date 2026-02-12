@@ -43,6 +43,12 @@ class ApiClient {
     if (!response.ok) throw new Error('Failed to delete graph');
   }
 
+  async getGraphObjects(id: string): Promise<Array<{ name: string; type: string; node_id: string }>> {
+    const response = await fetch(`${API_BASE}/graphs/${id}/objects`);
+    if (!response.ok) throw new Error('Failed to get graph objects');
+    return response.json();
+  }
+
   async validateGraph(graph: Graph): Promise<{ valid: boolean; code?: string; error?: string }> {
     const response = await fetch(`${API_BASE}/graphs/validate`, {
       method: 'POST',

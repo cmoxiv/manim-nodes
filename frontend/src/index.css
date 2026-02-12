@@ -29,6 +29,12 @@ body {
   height: 100vh;
 }
 
+/* Prevent line numbers from being selected in code/json viewers */
+.react-syntax-highlighter-line-number {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
 /* React Flow edge styling */
 .react-flow__edge-path {
   stroke: #666;

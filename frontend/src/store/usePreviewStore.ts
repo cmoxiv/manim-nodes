@@ -5,6 +5,7 @@ interface PreviewStore {
   isRendering: boolean;
   videoUrl: string | null;
   error: string | null;
+  errorNodeId: string | null;
   log: string[];
   debugLog: string[];
   generatedCode: string | null;
@@ -18,7 +19,7 @@ interface PreviewStore {
   // Actions
   setRendering: (rendering: boolean) => void;
   setVideoUrl: (url: string | null) => void;
-  setError: (error: string | null) => void;
+  setError: (error: string | null, nodeId?: string | null) => void;
   addLog: (message: string) => void;
   addDebugLog: (message: string) => void;
   clearLog: () => void;
@@ -34,6 +35,7 @@ export const usePreviewStore = create<PreviewStore>((set) => ({
   isRendering: false,
   videoUrl: null,
   error: null,
+  errorNodeId: null,
   log: [],
   debugLog: [],
   generatedCode: null,
@@ -44,7 +46,7 @@ export const usePreviewStore = create<PreviewStore>((set) => ({
 
   setRendering: (rendering) => set({ isRendering: rendering }),
   setVideoUrl: (url) => set({ videoUrl: url }),
-  setError: (error) => set({ error }),
+  setError: (error, nodeId) => set({ error, errorNodeId: nodeId || null }),
   addLog: (message) => set((state) => ({ log: [...state.log, message] })),
   addDebugLog: (message) => set((state) => ({ debugLog: [...state.debugLog, message] })),
   clearLog: () => set({ log: [], debugLog: [] }),
@@ -58,6 +60,7 @@ export const usePreviewStore = create<PreviewStore>((set) => ({
       isRendering: false,
       videoUrl: null,
       error: null,
+      errorNodeId: null,
       log: [],
       debugLog: [],
       generatedCode: null,

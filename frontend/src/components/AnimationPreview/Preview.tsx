@@ -1,8 +1,9 @@
 import { useRef, useEffect } from 'react';
-import { Play, Pause, RotateCcw, Download, X } from 'lucide-react';
+import { Play, Pause, RotateCcw, Download, X, FolderOpen } from 'lucide-react';
 import { usePreviewStore } from '../../store/usePreviewStore';
 import { useGraphStore } from '../../store/useGraphStore';
 import { usePreviewWebSocket } from '../../websocket/usePreviewSocket';
+
 
 export default function AnimationPreview() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -13,8 +14,6 @@ export default function AnimationPreview() {
     debugLog,
     isPlaying,
     setPlaying,
-    setCurrentTime,
-    setDuration,
   } = usePreviewStore();
   const graph = useGraphStore((state) => state.graph);
   const { sendRenderRequest, connected } = usePreviewWebSocket();
@@ -23,24 +22,13 @@ export default function AnimationPreview() {
     const video = videoRef.current;
     if (!video) return;
 
-    const handleTimeUpdate = () => setCurrentTime(video.currentTime);
-    const handleLoadedMetadata = () => setDuration(video.duration);
     const handleEnded = () => setPlaying(false);
-
-    video.addEventListener('timeupdate', handleTimeUpdate);
-    video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('ended', handleEnded);
-
-    return () => {
-      video.removeEventListener('timeupdate', handleTimeUpdate);
-      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      video.removeEventListener('ended', handleEnded);
-    };
-  }, [setCurrentTime, setDuration, setPlaying]);
+    return () => video.removeEventListener('ended', handleEnded);
+  }, [setPlaying]);
 
   const handlePlayPause = () => {
     if (!videoRef.current) return;
-
     if (isPlaying) {
       videoRef.current.pause();
       setPlaying(false);
@@ -60,14 +48,16 @@ export default function AnimationPreview() {
   const handleRender = () => {
     if (!graph || !connected) return;
 
-    // Sync current nodes/edges to the graph before rendering
     const { nodes, edges } = useGraphStore.getState();
 
     const graphNodes = nodes.map((node) => ({
       id: node.id,
-      type: node.data.type,
+      type: node.type === 'groupFrame' ? '__groupFrame' : node.data.type,
       position: node.position,
       data: { ...node.data },
+      ...(node.parentNode && { parentNode: node.parentNode }),
+      ...(node.style && { style: node.style }),
+      ...(node.zIndex !== undefined && { zIndex: node.zIndex }),
     }));
 
     const graphEdges = edges.map((edge) => ({
@@ -119,6 +109,42 @@ export default function AnimationPreview() {
         </div>
       )}
 
+      {/* Controls bar - above the video */}
+      {videoUrl && !isRendering && (
+        <div className="px-3 py-2 border-b border-gray-700 flex items-center gap-2">
+          <button
+            onClick={handlePlayPause}
+            className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+            title={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? <Pause size={16} className="text-white" /> : <Play size={16} className="text-white" />}
+          </button>
+          <button
+            onClick={handleRestart}
+            className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+            title="Restart"
+          >
+            <RotateCcw size={16} className="text-white" />
+          </button>
+          <div className="flex-1" />
+          <a
+            href={videoUrl}
+            download
+            className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+            title="Download video"
+          >
+            <Download size={16} className="text-white" />
+          </a>
+          <button
+            onClick={() => fetch('/api/open-folder/previews', { method: 'POST' })}
+            className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+            title="Open previews folder"
+          >
+            <FolderOpen size={16} className="text-white" />
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 flex items-center justify-center bg-black">
         {isRendering && (
           <div className="text-white text-center">
@@ -149,34 +175,6 @@ export default function AnimationPreview() {
           </div>
         )}
       </div>
-
-      {videoUrl && !isRendering && (
-        <div className="p-4 border-t border-gray-700 flex items-center gap-4">
-          <button
-            onClick={handlePlayPause}
-            className="p-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-          >
-            {isPlaying ? <Pause size={20} className="text-white" /> : <Play size={20} className="text-white" />}
-          </button>
-
-          <button
-            onClick={handleRestart}
-            className="p-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-          >
-            <RotateCcw size={20} className="text-white" />
-          </button>
-
-          <div className="flex-1"></div>
-
-          <a
-            href={videoUrl}
-            download
-            className="p-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-          >
-            <Download size={20} className="text-white" />
-          </a>
-        </div>
-      )}
     </div>
   );
 }

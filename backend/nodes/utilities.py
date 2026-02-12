@@ -1,6 +1,23 @@
 from pydantic import Field
-from typing import Dict
+from typing import Dict, List
 from .base import NodeBase
+
+
+class JunctionNode(NodeBase):
+    """Pass-through reroute point. Visually a small dot to tidy up wires."""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return ""  # Transparent — code generator maps output to input directly
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"in": "Any"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"out": "Any"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Utilities"
 
 
 class DebugPrintNode(NodeBase):
@@ -10,7 +27,7 @@ class DebugPrintNode(NodeBase):
     def to_manim_code(self, var_name: str) -> str:
         escaped = self.label.replace('"', '\\"')
         prefix = f'{escaped}: ' if escaped else ''
-        return f'print("[DEBUG] {prefix}" + str({{input_value}}))'
+        return f'print("[DEBUG:{{node_id}}] {prefix}" + str({{input_value}}))'
 
     def get_inputs(self) -> Dict[str, str]:
         return {"value": "Any"}
@@ -251,13 +268,20 @@ class TransformInPlaceNode(NodeBase):
 
     def to_manim_code(self, var_name: str) -> str:
         lines = [
-            f'{var_name}_target = {{input_mobject}}.copy()',
-            f'_s_{var_name} = np.array({{param_scale}}, dtype=float)',
-            f'{var_name}_target.apply_matrix(np.diag(_s_{var_name}), about_point={{input_mobject}}.get_center())',
-            f'{var_name}_target.rotate(np.radians({{param_angle}}), axis=np.array({{param_axis}}, dtype=float), about_point={{input_mobject}}.get_center())',
-            f'{var_name}_target.shift(np.array({{param_translation}}, dtype=float))',
-            f'{{MOVE_TO}}',
-            f'{var_name} = Transform({{input_mobject}}, {var_name}_target, run_time={self.run_time})',
+            f'_{var_name}_orig = {{input_mobject}}.copy()',
+            f'_{var_name}_ctr = {{input_mobject}}.get_center()',
+            f'_{var_name}_s = np.array({{param_scale}}, dtype=float)',
+            f'_{var_name}_a = np.radians({{param_angle}})',
+            f'_{var_name}_ax = np.array({{param_axis}}, dtype=float)',
+            f'_{var_name}_tr = np.array({{param_translation}}, dtype=float)',
+            f'def _{var_name}_upd(m, alpha):',
+            f'    m.become(_{var_name}_orig.copy())',
+            f'    _cs = np.ones(3) + alpha * (_{var_name}_s - np.ones(3))',
+            f'    m.apply_matrix(np.diag(_cs), about_point=_{var_name}_ctr)',
+            f'    m.rotate(alpha * _{var_name}_a, axis=_{var_name}_ax, about_point=_{var_name}_ctr)',
+            f'    m.shift(alpha * _{var_name}_tr)',
+            f'    {{MOVE_TO}}',
+            f'{var_name} = UpdateFromAlphaFunc({{input_mobject}}, _{var_name}_upd, run_time={self.run_time})',
         ]
         return '\n        '.join(lines)
 
@@ -322,3 +346,120 @@ class TransformNode(NodeBase):
             "note": "Bottom row [0, 0, 1] is fixed for 2D transforms"
         }
         return schema
+
+
+class ImportGraphNode(NodeBase):
+    """Import objects from another graph file"""
+    graph_file: str = Field(default="", description="Path to graph JSON file")
+    expose_1: str = Field(default="none", description="Object name to expose as output 1")
+    expose_2: str = Field(default="none", description="Object name to expose as output 2")
+    expose_3: str = Field(default="none", description="Object name to expose as output 3")
+
+    def to_manim_code(self, var_name: str) -> str:
+        # Code generation for ImportGraph is handled specially in the code generator
+        # This placeholder generates a comment
+        return f'# ImportGraph: {self.graph_file}'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {}
+
+    def get_outputs(self) -> Dict[str, str]:
+        outputs: Dict[str, str] = {}
+        for i, expose in enumerate([self.expose_1, self.expose_2, self.expose_3], 1):
+            if expose and expose != "none":
+                outputs[f"obj_{i}"] = "Mobject"
+        return outputs
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Utilities"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        # expose fields will be populated dynamically by the frontend
+        # based on the selected graph file's named objects
+        return schema
+
+
+class FunctionDefNode(NodeBase):
+    """Define a reusable Python function"""
+    func_name: str = Field(default="my_func", description="Function name")
+    code: str = Field(
+        default="def my_func(x):\n    return {'result': x ** 2}",
+        description="Function code (must return a dict of outputs)"
+    )
+
+    def to_manim_code(self, var_name: str) -> str:
+        return self.code
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Utilities"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "code" in schema["properties"]:
+            schema["properties"]["code"]["format"] = "code"
+        return schema
+
+
+def parse_function_code(code: str):
+    """Parse a function definition to extract parameter names and return dict keys."""
+    import re
+    params: List[str] = []
+    outputs: List[str] = []
+
+    def_match = re.search(r'def\s+\w+\(([^)]*)\)', code)
+    if def_match:
+        params = [p.strip().split('=')[0].strip() for p in def_match.group(1).split(',')]
+        params = [p for p in params if p and p != 'self']
+
+    return_match = re.search(r'return\s*\{(.+?)\}', code, re.DOTALL)
+    if return_match:
+        outputs = re.findall(r"['\"](\w+)['\"]", return_match.group(1))
+
+    return params, outputs
+
+
+class FunctionCallNode(NodeBase):
+    """Call a defined function"""
+    func_name: str = Field(default="my_func", description="Function to call")
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name}_result = {self.func_name}({{FUNC_ARGS}})'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {f"arg_{i}": "Any" for i in range(1, 9)}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {f"out_{i}": "Any" for i in range(1, 9)}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Utilities"
+
+
+class GetVertexNode(NodeBase):
+    """Get a vertex position from a polygon"""
+    index: str = Field(default="0", description="Vertex index (0-based)")
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = list({{input_mobject}}.get_vertices()[{self.index}])'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"mobject": "Mobject"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"position": "Vec3"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Utilities"

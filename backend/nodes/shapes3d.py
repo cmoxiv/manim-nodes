@@ -12,6 +12,8 @@ class SphereNode(NodeBase):
     stroke_opacity: str = Field(default="1.0", description="Edge opacity")
     resolution: str = Field(default="(20, 20)", description="UV resolution")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         code = f'{var_name} = Sphere(radius={{param_radius}}, color={{param_color}}, fill_opacity={self.fill_opacity}, stroke_opacity={self.stroke_opacity}, resolution={self.resolution})'
@@ -26,11 +28,18 @@ class SphereNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"shape": "Mobject"}
+        return {"shape": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Shapes 3D"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema
 
 
 class CubeNode(NodeBase):
@@ -41,6 +50,8 @@ class CubeNode(NodeBase):
     fill_opacity: str = Field(default="1.0", description="Face opacity")
     stroke_opacity: str = Field(default="1.0", description="Edge opacity")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         code = f'{var_name} = Cube(side_length={{param_side_length}}, color={{param_color}}, fill_opacity={self.fill_opacity}, stroke_opacity={self.stroke_opacity})'
@@ -55,11 +66,18 @@ class CubeNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"shape": "Mobject"}
+        return {"shape": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Shapes 3D"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema
 
 
 class ConeNode(NodeBase):
@@ -72,6 +90,8 @@ class ConeNode(NodeBase):
     stroke_opacity: str = Field(default="1.0", description="Edge opacity")
     resolution: str = Field(default="20")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         code = f'{var_name} = Cone(base_radius={self.base_radius}, height={{param_height}}, color={{param_color}}, fill_opacity={self.fill_opacity}, stroke_opacity={self.stroke_opacity}, resolution={self.resolution})'
@@ -86,11 +106,18 @@ class ConeNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"shape": "Mobject"}
+        return {"shape": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Shapes 3D"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema
 
 
 class CylinderNode(NodeBase):
@@ -103,6 +130,8 @@ class CylinderNode(NodeBase):
     stroke_opacity: str = Field(default="1.0", description="Edge opacity")
     resolution: str = Field(default="20")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         code = f'{var_name} = Cylinder(radius={{param_radius}}, height={{param_height}}, color={{param_color}}, fill_opacity={self.fill_opacity}, stroke_opacity={self.stroke_opacity}, resolution={self.resolution})'
@@ -118,11 +147,18 @@ class CylinderNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"shape": "Mobject"}
+        return {"shape": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Shapes 3D"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema
 
 
 class TorusNode(NodeBase):
@@ -134,6 +170,8 @@ class TorusNode(NodeBase):
     fill_opacity: str = Field(default="1.0", description="Face opacity")
     stroke_opacity: str = Field(default="1.0", description="Edge opacity")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         code = f'{var_name} = Torus(major_radius={{param_major_radius}}, minor_radius={{param_minor_radius}}, color={{param_color}}, fill_opacity={self.fill_opacity}, stroke_opacity={self.stroke_opacity})'
@@ -149,11 +187,18 @@ class TorusNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"shape": "Mobject"}
+        return {"shape": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Shapes 3D"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema
 
 
 class Axes3DNode(NodeBase):
@@ -166,6 +211,8 @@ class Axes3DNode(NodeBase):
     y_length: str = Field(default="10.0")
     z_length: str = Field(default="6.0")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         code = f'''{var_name} = ThreeDAxes(
@@ -185,8 +232,15 @@ class Axes3DNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"axes": "Mobject"}
+        return {"axes": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Shapes 3D"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema

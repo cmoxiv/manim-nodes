@@ -16,6 +16,8 @@ class AxesNode(NodeBase):
     y_step: str = Field(default="1.0", description="Tick spacing (Y)")
     z_index: str = Field(default="0", description="Draw order (higher = front)")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         code = f'{var_name} = Axes(x_range=[{self.x_range_min}, {self.x_range_max}, {self.x_step}], y_range=[{self.y_range_min}, {self.y_range_max}, {self.y_step}], x_length={self.x_length}, y_length={self.y_length})'
@@ -30,11 +32,18 @@ class AxesNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"axes": "Mobject"}
+        return {"axes": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Text & Math"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema
 
 
 class NumberPlaneNode(NodeBase):
@@ -51,6 +60,8 @@ class NumberPlaneNode(NodeBase):
     minor_line_opacity: str = Field(default="0.1", description="Minor grid line opacity")
     z_index: str = Field(default="0", description="Draw order (higher = front)")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         code = f'{var_name} = NumberPlane(x_range=[{self.x_range_min}, {self.x_range_max}, {self.x_step}], y_range=[{self.y_range_min}, {self.y_range_max}, {self.y_step}], faded_line_ratio={self.faded_line_ratio}, background_line_style={{"stroke_opacity": {self.major_line_opacity}}}, faded_line_style={{"stroke_opacity": {self.minor_line_opacity}}})'
@@ -65,11 +76,18 @@ class NumberPlaneNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"plane": "Mobject"}
+        return {"plane": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Text & Math"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema
 
 
 class MathTexNode(NodeBase):
@@ -80,6 +98,8 @@ class MathTexNode(NodeBase):
     color: str = Field(default="#FFFFFF")
     z_index: str = Field(default="0", description="Draw order (higher = front)")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         escaped_tex = self.tex.replace('"', '\\"')
@@ -96,11 +116,18 @@ class MathTexNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"tex": "Mobject"}
+        return {"tex": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Text & Math"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema
 
 
 class VectorNode(NodeBase):
@@ -109,25 +136,34 @@ class VectorNode(NodeBase):
     direction: str = Field(default="[2, 3, 0]", description="Vector direction [x, y, z]")
     color: str = Field(default="#FFFFFF")
     z_index: str = Field(default="0", description="Draw order (higher = front)")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
-        code = f'{var_name} = Vector({{param_position}}, color={{param_color}})'
+        code = f'{var_name} = Vector({{param_direction}}, color={{param_color}})'
         if self.z_index != "0":
             code += f'.set_z_index({self.z_index})'
         return code
 
     def get_inputs(self) -> Dict[str, str]:
         return {
-            "param_position": "Vec3",
+            "param_direction": "Vec3",
             "param_color": "Color"
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"vector": "Mobject"}
+        return {"vector": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Text & Math"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema
 
 
 class DotNode(NodeBase):
@@ -137,6 +173,8 @@ class DotNode(NodeBase):
     radius: str = Field(default="0.08")
     color: str = Field(default="#FFFFFF")
     z_index: str = Field(default="0", description="Draw order (higher = front)")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         code = f'{var_name} = Dot(point={{param_position}}, radius={{param_radius}}, color={{param_color}})'
@@ -152,11 +190,18 @@ class DotNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"dot": "Mobject"}
+        return {"dot": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Text & Math"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        return schema
 
 
 class LinePlotNode(NodeBase):
@@ -168,6 +213,8 @@ class LinePlotNode(NodeBase):
     color: str = Field(default="#58C4DD")
     stroke_width: str = Field(default="2.0", description="Line stroke width")
     z_index: str = Field(default="0", description="Draw order (higher = front)")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         pfx = f"_{var_name}"
@@ -195,7 +242,7 @@ class LinePlotNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"plot": "Mobject"}
+        return {"plot": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
@@ -206,6 +253,8 @@ class LinePlotNode(NodeBase):
         schema = cls.model_json_schema()
         if "properties" in schema and "mode" in schema["properties"]:
             schema["properties"]["mode"]["enum"] = ["scatter", "line", "both"]
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
         return schema
 
 
@@ -219,6 +268,8 @@ class PolylineNode(NodeBase):
     stroke_width: str = Field(default="4.0")
     z_index: str = Field(default="0", description="Draw order (higher = front)")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         if self.closed == "true":
@@ -239,7 +290,7 @@ class PolylineNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"shape": "Mobject"}
+        return {"shape": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
@@ -250,6 +301,8 @@ class PolylineNode(NodeBase):
         schema = cls.model_json_schema()
         if "properties" in schema and "closed" in schema["properties"]:
             schema["properties"]["closed"]["enum"] = ["false", "true"]
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
         return schema
 
 
@@ -266,11 +319,13 @@ class ParametricFunctionNode(NodeBase):
     stroke_width: str = Field(default="4.0")
     z_index: str = Field(default="0", description="Draw order (higher = front)")
     position: str = Field(default="[0, 0, 0]", description="3D position [x, y, z]")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
         # Indent user code for function body
         indented_code = "\n".join(
-            f"        {line}" for line in self.code.splitlines()
+            f"            {line}" for line in self.code.splitlines()
         )
         color = f'"{self.color}"' if self.color.startswith('#') else self.color
         code = f"""def _func_{var_name}(t):
@@ -287,7 +342,7 @@ class ParametricFunctionNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"shape": "Mobject"}
+        return {"shape": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
@@ -298,6 +353,8 @@ class ParametricFunctionNode(NodeBase):
         schema = cls.model_json_schema()
         if "properties" in schema and "code" in schema["properties"]:
             schema["properties"]["code"]["format"] = "code"
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
         return schema
 
 
@@ -308,10 +365,13 @@ class DisplayMatrixNode(NodeBase):
     scale: str = Field(default="0.8", description="Scale factor")
     matrix: str = Field(default="[[1, 0], [0, 1]]", description="Fallback matrix value")
     vector: str = Field(default="[1, 0, 0]", description="Fallback vector value")
+    decimal_places: str = Field(default="3", description="Number of decimal places")
     z_index: str = Field(default="0", description="Draw order (higher = front)")
+    present: str = Field(default="create", description="How to present this shape")
+    present_run_time: str = Field(default="1.0", description="Presentation duration")
 
     def to_manim_code(self, var_name: str) -> str:
-        fmt = 'element_to_mobject=lambda e: DecimalNumber(e, num_decimal_places=3)'
+        fmt = f'element_to_mobject=lambda e: DecimalNumber(e, num_decimal_places={self.decimal_places})'
         if self.mode == "vector":
             code = f'{var_name} = Matrix([[v] for v in {{param_vector}}], {fmt}).scale({self.scale})'
         else:
@@ -327,8 +387,17 @@ class DisplayMatrixNode(NodeBase):
         }
 
     def get_outputs(self) -> Dict[str, str]:
-        return {"mobject": "Mobject"}
+        return {"mobject": "Mobject", "animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:
         return "Text & Math"
+
+    @classmethod
+    def get_schema(cls) -> Dict:
+        schema = cls.model_json_schema()
+        if "properties" in schema and "present" in schema["properties"]:
+            schema["properties"]["present"]["enum"] = ["none", "show", "create", "fadein", "write"]
+        if "properties" in schema and "mode" in schema["properties"]:
+            schema["properties"]["mode"]["enum"] = ["matrix", "vector"]
+        return schema

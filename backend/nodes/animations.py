@@ -56,7 +56,7 @@ class FadeOutNode(NodeBase):
 
 
 class ShowNode(NodeBase):
-    """Display a shape in the scene without animation"""
+    """Display a shape in the scene without animation (self.add)"""
     copy: bool = Field(default=False, description="Animate a copy (preserves original)")
 
     def to_manim_code(self, var_name: str) -> str:
@@ -67,7 +67,6 @@ class ShowNode(NodeBase):
 
     def get_outputs(self) -> Dict[str, str]:
         return {
-            "animation": "Animation",
             "shape_out": "Mobject"
         }
 
@@ -178,7 +177,8 @@ class RotateNode(NodeBase):
     def get_outputs(self) -> Dict[str, str]:
         return {
             "animation": "Animation",
-            "shape_out": "Mobject"
+            "shape_out": "Mobject",
+            "angle": "Number",
         }
 
     @classmethod
@@ -217,7 +217,8 @@ class ScaleNode(NodeBase):
     def get_outputs(self) -> Dict[str, str]:
         return {
             "animation": "Animation",
-            "shape_out": "Mobject"
+            "shape_out": "Mobject",
+            "scale_factor": "Number",
         }
 
     @classmethod
@@ -247,7 +248,8 @@ class MoveToNode(NodeBase):
     def get_outputs(self) -> Dict[str, str]:
         return {
             "animation": "Animation",
-            "shape_out": "Mobject"
+            "shape_out": "Mobject",
+            "position": "Vec3",
         }
 
     @classmethod
@@ -826,6 +828,24 @@ class BroadcastNode(NodeBase):
 
     def get_outputs(self) -> Dict[str, str]:
         return {"animation": "Animation", "shape_out": "Mobject"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Animations"
+
+
+class SwapNode(NodeBase):
+    """Swap positions of two mobjects"""
+    run_time: str = Field(default="1.0")
+
+    def to_manim_code(self, var_name: str) -> str:
+        return f'{var_name} = Swap({{input_mobject_a}}, {{input_mobject_b}}, run_time={self.run_time})'
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {"mobject_a": "Mobject", "mobject_b": "Mobject"}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"animation": "Animation"}
 
     @classmethod
     def get_category(cls) -> str:

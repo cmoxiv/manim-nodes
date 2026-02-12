@@ -1,5 +1,7 @@
+import subprocess
+import sys
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -79,6 +81,27 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy"}
+
+
+@app.post("/api/open-folder/{folder}")
+async def open_folder(folder: str):
+    """Open a storage folder in the system file manager"""
+    storage = _temp_storage
+    folders = {
+        "exports": storage.exports_dir,
+        "previews": storage.temp_dir / "media",
+    }
+    path = folders.get(folder)
+    if path is None:
+        raise HTTPException(status_code=400, detail="Unknown folder")
+    path.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    elif sys.platform == "win32":
+        subprocess.Popen(["explorer", str(path)])
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
+    return {"ok": True}
 
 
 if __name__ == "__main__":

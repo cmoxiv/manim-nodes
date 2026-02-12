@@ -1,246 +1,176 @@
 # Manim Nodes
 
-A visual programming interface for creating MANIM animations through a drag-and-drop node-based interface. Perfect for educators, content creators, and researchers who want to create mathematical animations without writing code.
+A visual node-based editor for creating [MANIM](https://www.manim.community/) animations without writing code. Build mathematical animations by connecting nodes in a drag-and-drop canvas — from simple shape sequences to 3D parametric curves and geometric proofs.
+
+## Examples
+
+### Basic Shapes
+Circle, Square, and Text with a FadeIn / Write sequence.
+
+![Basic Shapes](docs/examples/basic_shapes.gif)
+
+### Pythagorean Theorem
+Animated rearrangement proof of a^2 + b^2 = c^2 with labeled triangles and edge squares.
+
+![Pythagorean Theorem](docs/examples/pythagorean.gif)
+
+### 2D Parametric Curves
+Two parametric curves (t sin 2t, cos(t-pi)-t) drawn with Write, then traced by animated dots.
+
+![2D Parametric Curves](docs/examples/parametric2d.gif)
+
+### 3D Parametric Curves
+The same parametric curves lifted into 3D with Axes3D, NumberPlane, and camera orientation.
+
+![3D Parametric Curves](docs/examples/parametric3d.gif)
+
+### Lorenz Attractor
+Live-plotted Lorenz strange attractor in 3D with rotating camera.
+
+![Lorenz Attractor](docs/examples/lorenz.gif)
+
+### Square Root of 2 Construction
+Euclidean construction of sqrt(2) as the diagonal of a unit square, with the Pythagorean identity.
+
+![Square Root of 2](docs/examples/sqrt2.gif)
 
 ## Features
 
-- 🎨 **Visual Node Editor**: Drag-and-drop interface powered by React Flow
-- 🎬 **Live Preview**: Real-time preview of animations via WebSocket
-- 📦 **20+ Node Types**: Shapes, animations, math objects, and more
-- 💾 **Auto-Save**: Automatic graph saving with dirty state tracking
-- 📤 **Export**: High-quality video export (480p to 4K, 15-60fps)
-- 🐳 **Docker Support**: One-command deployment with Docker Compose
-- 🎯 **Type Safety**: Full TypeScript support in frontend
+- **Visual Node Editor** — Drag-and-drop canvas powered by React Flow
+- **Live Preview** — Real-time animation preview via WebSocket
+- **122 Node Types** — Shapes, animations, math, 3D, camera, vector/matrix ops, and utilities
+- **Auto-Save** — Automatic graph persistence with dirty-state tracking
+- **Export** — High-quality video export (480p to 4K, 15-60fps, MP4/GIF)
+- **3D Support** — 3D shapes, Axes3D, camera orientation and movement
+- **Frames** — Resizable group frames for organising complex graphs
+- **Docker** — One-command deployment with Docker Compose
 
 ## Quick Start
 
 ### Docker (Recommended)
 
-The easiest way to run Manim Nodes:
-
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/manim-nodes.git
-cd manim-nodes
-
-# Start with Docker Compose
 docker-compose up -d
-
-# Access the application
 open http://localhost:8000
 ```
 
-That's it! The application will be running with all dependencies installed.
-
 ### Manual Setup
 
-If you prefer not to use Docker:
-
-#### Backend Setup
+#### Backend
 
 ```bash
-# Create Python virtual environment
 python3 -m venv ~/.venvs/manim-nodes
 source ~/.venvs/manim-nodes/bin/activate
-
-# Install dependencies
-cd backend
-pip install -r requirements.txt
-
-# Run the backend
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-#### Frontend Setup
+#### Frontend
 
 ```bash
-# Install Node dependencies
 cd frontend
 npm install
-
-# Run the development server
 npm run dev
 ```
 
-Access the application at http://localhost:5173
+Access the frontend at http://localhost:5173
 
 ## System Requirements
 
-- **Docker**: Latest version (recommended)
-- **Python**: 3.10+ (for manual setup)
-- **Node.js**: 18+ (for manual setup)
-- **FFmpeg**: Required for video rendering
-- **LaTeX**: Required for mathematical text rendering
+- **Python** 3.10+
+- **Node.js** 18+
+- **FFmpeg** (video rendering)
+- **LaTeX** (mathematical text rendering)
+- **Docker** (optional, recommended)
 
-## Usage
+## Available Node Types (122)
 
-### Creating Your First Animation
-
-1. **Add Nodes**: Click nodes from the left palette to add them to the canvas
-2. **Connect Nodes**: Drag from output handles (green) to input handles (blue)
-3. **Edit Properties**: Select a node and modify its properties in the right panel
-4. **Preview**: Click "Render Preview" to see your animation
-5. **Export**: Click "Export" to generate high-quality video
-
-### Example: Simple Circle Animation
-
-1. Add a **Circle** node from the Shapes category
-2. Add a **FadeIn** node from the Animations category
-3. Connect Circle's output to FadeIn's input
-4. Click "Render Preview"
-
-### Keyboard Shortcuts
-
-- `Ctrl/Cmd + S`: Save graph
-- `Delete`: Delete selected nodes
-- `Space`: Play/pause preview
-- `Esc`: Deselect nodes
-
-## Available Node Types
-
-### Shapes
-- Circle, Square, Rectangle
-- Line, Arrow
-- Text
-
-### Animations
-- FadeIn, FadeOut
-- Create, Write
-- Transform
-- Rotate, Scale
-- MoveTo
-
-### Math
-- Axes, NumberPlane
-- MathTex (LaTeX support)
-- Vector, Dot
+| Category | Count | Nodes |
+|----------|-------|-------|
+| **Shapes 2D** | 11 | Angle, Arrow, Circle, IsoscelesTriangle, Line, Polyline, Rectangle, RegularPolygon, RightTriangle, Square, Triangle |
+| **Shapes 3D** | 6 | Axes3D, Cone, Cube, Cylinder, Sphere, Torus |
+| **Animations** | 39 | AnimationGroup, ApplyWave, Broadcast, Circumscribe, Create, DrawBorderThenFill, FadeIn, FadeMorph, FadeOut, FadeToColor, Flash, FocusOn, GrowArrow, GrowFromCenter, GrowFromEdge, GrowFromPoint, Indicate, Morph, MorphFromCopy, MorphMatchingShapes, MorphMatchingTex, MoveAlongPath, MoveTo, ReplacementMorph, Rotate, Scale, Sequence, Show, ShrinkToCenter, SpinInFromNothing, SpiralIn, SquareFromEdge, Swap, Transform, TransformInPlace, Uncreate, Unwrite, Wiggle, Write |
+| **Text & Math** | 11 | Axes, DisplayMatrix, Dot, LineLabel, LinePlot, MathTex, NumberPlane, ParametricFunction, Text, TextCharacter, Vector |
+| **Camera** | 3 | MoveCamera, SetCameraOrientation, ZoomCamera |
+| **Math Ops** | 42 | Arithmetic, Vec3 ops, Matrix ops, constants (RIGHT, LEFT, UP, DOWN, etc.), Color |
+| **Utilities** | 9 | DebugPrint, ExposeParameters, ExtractEdges, FunctionCall, FunctionDef, GetVertex, ImportGraph, Junction, PythonCode |
+| **Grouping** | 1 | Group |
 
 ## Architecture
-
-**Backend:**
-- FastAPI (REST API + WebSocket)
-- MANIM CE (animation rendering)
-- Pydantic (data validation)
-
-**Frontend:**
-- React 18 + TypeScript
-- React Flow (node editor)
-- Zustand (state management)
-- TailwindCSS (styling)
-
-**Deployment:**
-- Docker + Docker Compose
-- Nginx (reverse proxy, optional)
-
-## Development
-
-### Project Structure
 
 ```
 manim-nodes/
 ├── backend/
-│   ├── api/              # REST API endpoints
-│   ├── core/             # Core logic (validation, code gen, rendering)
-│   ├── models/           # Pydantic models
-│   ├── nodes/            # Node definitions
-│   └── main.py           # FastAPI app entry point
+│   ├── api/           # REST endpoints + WebSocket handler
+│   ├── core/          # Validation, code generation, rendering
+│   ├── models/        # Pydantic data models
+│   ├── nodes/         # Node type definitions (8 modules)
+│   ├── examples/      # Built-in example graphs
+│   └── main.py        # FastAPI entry point
 ├── frontend/
 │   ├── src/
-│   │   ├── components/   # React components
-│   │   ├── store/        # Zustand stores
-│   │   ├── api/          # API client
-│   │   └── types/        # TypeScript types
+│   │   ├── components/  # NodeEditor, Preview, TopBar, Palette, ...
+│   │   ├── store/       # Zustand stores (graph, preview, UI)
+│   │   ├── api/         # REST client
+│   │   └── websocket/   # Preview WebSocket
 │   └── package.json
+├── scripts/             # GIF export and utilities
 ├── Dockerfile
-├── docker-compose.yml
-└── README.md
+└── docker-compose.yml
 ```
+
+**Backend:** FastAPI + MANIM CE + Pydantic
+**Frontend:** React 18 + TypeScript + React Flow + Zustand + TailwindCSS
+
+### Data Flow
+
+1. User creates a node graph in the React Flow canvas
+2. Graph auto-saves to backend via REST API
+3. "Render Preview" sends the graph over WebSocket
+4. Backend generates Python code from the graph and renders with MANIM
+5. Video URL streamed back via WebSocket; frontend plays it in the preview panel
+
+## Development
+
+### Adding New Nodes
+
+1. Create a node class in `backend/nodes/<category>.py` extending `NodeBase`
+2. Implement `to_manim_code()`, `get_inputs()`, `get_outputs()`
+3. Register in `NODE_REGISTRY` in `backend/nodes/__init__.py`
+4. Restart backend — the node appears in the frontend palette automatically
 
 ### Running Tests
 
 ```bash
-# Backend tests
-cd backend
-pytest
+# Backend
+pytest backend/
 
-# Frontend linting
-cd frontend
-npm run lint
+# Frontend
+cd frontend && npm run lint
 ```
 
-### Adding New Nodes
+### Exporting Example GIFs
 
-1. Create a new node class in `backend/nodes/`
-2. Extend `NodeBase` and implement required methods
-3. Add to `NODE_REGISTRY` in `backend/nodes/__init__.py`
-4. Restart backend - node will appear in frontend palette automatically
-
-Example:
-
-```python
-from .base import NodeBase
-from pydantic import Field
-
-class MyCustomNode(NodeBase):
-    my_param: float = Field(default=1.0)
-
-    def to_manim_code(self, var_name: str) -> str:
-        return f'{var_name} = MyManimObject(param={self.my_param})'
-
-    def get_inputs(self) -> Dict[str, str]:
-        return {}
-
-    def get_outputs(self) -> Dict[str, str]:
-        return {"shape": "Mobject"}
-
-    @classmethod
-    def get_category(cls) -> str:
-        return "Custom"
+```bash
+python scripts/export_example_gifs.py
 ```
+
+Renders all built-in examples as GIFs into `docs/examples/`.
 
 ## Troubleshooting
 
-### Video rendering fails
-- Ensure FFmpeg is installed: `ffmpeg -version`
-- Check LaTeX installation: `latex --version`
-- Review render logs in preview panel
-
-### WebSocket connection issues
-- Check backend is running: `curl http://localhost:8000/health`
-- Verify firewall settings
-- Check browser console for errors
-
-### Slow preview rendering
-- Preview uses low quality (480p, 15fps) for speed
-- Complex scenes may still take time
-- Use simpler graphs during development
-
-## Contributing
-
-Contributions welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+| Problem | Fix |
+|---------|-----|
+| Video rendering fails | Check `ffmpeg -version` and `latex --version` |
+| WebSocket won't connect | Verify backend is running: `curl http://localhost:8000/health` |
+| Slow preview | Preview uses 480p 15fps by default; complex scenes take longer |
 
 ## License
 
-MIT License - see LICENSE file for details
+MIT License — see LICENSE file for details.
 
 ## Acknowledgments
 
-- Built with [MANIM Community Edition](https://www.manim.community/)
-- Node editor powered by [React Flow](https://reactflow.dev/)
+- [MANIM Community Edition](https://www.manim.community/) — animation engine
+- [React Flow](https://reactflow.dev/) — node editor
 - Inspired by visual programming tools like Blender's Geometry Nodes
-
-## Support
-
-- 📖 Documentation: [GitHub Wiki](https://github.com/yourusername/manim-nodes/wiki)
-- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/manim-nodes/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/yourusername/manim-nodes/discussions)
-
----
-
-Made with ❤️ for the MANIM community

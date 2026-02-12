@@ -1,5 +1,5 @@
 from .base import NodeBase
-from .shapes import CircleNode, SquareNode, RectangleNode, LineNode, TextNode, ArrowNode, TriangleNode, RegularPolygonNode, RightTriangleNode, IsoscelesTriangleNode, LineLabelNode
+from .shapes import CircleNode, SquareNode, RectangleNode, LineNode, TextNode, ArrowNode, TriangleNode, RegularPolygonNode, RightTriangleNode, IsoscelesTriangleNode, LineLabelNode, AngleNode
 from .animations import (
     FadeInNode, FadeOutNode, ShowNode, WriteNode, CreateNode,
     MorphNode, RotateNode, ScaleNode, MoveToNode, SequenceNode, AnimationGroupNode,
@@ -15,18 +15,21 @@ from .animations import (
     ReplacementMorphNode, MorphFromCopyNode, FadeMorphNode,
     MorphMatchingShapesNode, MorphMatchingTexNode, FadeToColorNode, ShrinkToCenterNode,
     # Other
-    BroadcastNode,
+    BroadcastNode, SwapNode,
     SquareFromEdgeNode,
 )
 from .math import AxesNode, NumberPlaneNode, MathTexNode, VectorNode, DotNode, LinePlotNode, PolylineNode, ParametricFunctionNode, DisplayMatrixNode
-from .utilities import DebugPrintNode, GroupNode, TextCharacterNode, PythonCodeNode, TransformNode, TransformInPlaceNode, ExtractEdgesNode, ExposeParametersNode
+from .utilities import JunctionNode, DebugPrintNode, GroupNode, TextCharacterNode, PythonCodeNode, TransformNode, TransformInPlaceNode, ExtractEdgesNode, ExposeParametersNode, GetVertexNode, ImportGraphNode, FunctionDefNode, FunctionCallNode
 from .shapes3d import SphereNode, CubeNode, ConeNode, CylinderNode, TorusNode, Axes3DNode
 from .camera import (
     SetCameraOrientationNode, MoveCameraNode, ZoomCameraNode,
 )
 from .math_ops import (
     AddNode, SubtractNode, MultiplyNode, DivideNode, NegateNode,
-    NumberNode, Vec3Node, Vec3SplitNode, Vec3CombineNode,
+    NumberNode, Vec3Node,
+    RightNode, LeftNode, UpNode, DownNode, OutNode, InNode,
+    OriginNode, XNode, YNode, ZNode,
+    Vec3SplitNode, Vec3CombineNode,
     Vec3AddNode, Vec3SubtractNode, Vec3ScaleNode, Vec3NegateNode,
     Vec3DotNode, Vec3CrossNode, Vec3LengthNode, Vec3NormalizeNode,
     MatrixNode, MatrixMultiplyNode, MatrixScaleNode,
@@ -91,6 +94,7 @@ NODE_REGISTRY = {
     "ShrinkToCenter": ShrinkToCenterNode,
     # Other animations
     "Broadcast": BroadcastNode,
+    "Swap": SwapNode,
     "SquareFromEdge": SquareFromEdgeNode,
     "Axes": AxesNode,
     "NumberPlane": NumberPlaneNode,
@@ -102,6 +106,7 @@ NODE_REGISTRY = {
     "Polyline": PolylineNode,
     "ParametricFunction": ParametricFunctionNode,
     # Utilities
+    "Junction": JunctionNode,
     "DebugPrint": DebugPrintNode,
     "Group": GroupNode,
     "TextCharacter": TextCharacterNode,
@@ -110,8 +115,13 @@ NODE_REGISTRY = {
     "TransformInPlace": TransformInPlaceNode,
     "ExtractEdges": ExtractEdgesNode,
     "ExposeParameters": ExposeParametersNode,
+    "GetVertex": GetVertexNode,
+    "ImportGraph": ImportGraphNode,
+    "FunctionDef": FunctionDefNode,
+    "FunctionCall": FunctionCallNode,
     # Text & Math (additional)
     "LineLabel": LineLabelNode,
+    "Angle": AngleNode,
     # 3D Shapes
     "Sphere": SphereNode,
     "Cube": CubeNode,
@@ -130,6 +140,16 @@ NODE_REGISTRY = {
     "Divide": DivideNode,
     "Number": NumberNode,
     "Vec3": Vec3Node,
+    "RIGHT": RightNode,
+    "LEFT": LeftNode,
+    "UP": UpNode,
+    "DOWN": DownNode,
+    "OUT": OutNode,
+    "IN": InNode,
+    "ORIGIN": OriginNode,
+    "X": XNode,
+    "Y": YNode,
+    "Z": ZNode,
     "Vec3Split": Vec3SplitNode,
     "Vec3Combine": Vec3CombineNode,
     "Matrix": MatrixNode,
@@ -216,6 +236,7 @@ __all__ = [
     "ShrinkToCenterNode",
     # Other animations
     "BroadcastNode",
+    "SwapNode",
     "SquareFromEdgeNode",
     "AxesNode",
     "NumberPlaneNode",
@@ -227,6 +248,7 @@ __all__ = [
     "PolylineNode",
     "ParametricFunctionNode",
     # Utilities
+    "JunctionNode",
     "DebugPrintNode",
     "GroupNode",
     "TextCharacterNode",
@@ -235,7 +257,12 @@ __all__ = [
     "TransformInPlaceNode",
     "ExtractEdgesNode",
     "ExposeParametersNode",
+    "GetVertexNode",
+    "ImportGraphNode",
+    "FunctionDefNode",
+    "FunctionCallNode",
     "LineLabelNode",
+    "AngleNode",
     # 3D Shapes
     "SphereNode",
     "CubeNode",
@@ -254,6 +281,16 @@ __all__ = [
     "DivideNode",
     "NumberNode",
     "Vec3Node",
+    "RightNode",
+    "LeftNode",
+    "UpNode",
+    "DownNode",
+    "OutNode",
+    "InNode",
+    "OriginNode",
+    "XNode",
+    "YNode",
+    "ZNode",
     "Vec3SplitNode",
     "Vec3CombineNode",
     "MatrixNode",

@@ -1,19 +1,22 @@
 import asyncio
 import os
-import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, Awaitable, Dict, Union
 from .code_generator import CodeGenerator
+from .graph_validator import ValidationError
 from .storage import StorageManager
 from ..models.graph import Graph
+
+ProgressCallback = Callable[[str], Union[None, Awaitable[None]]]
 
 
 class RenderError(Exception):
     """Raised when rendering fails"""
-    def __init__(self, message: str, code: str = None):
+    def __init__(self, message: str, code: str = None, node_id: str = None):
         super().__init__(message)
         self.code = code
+        self.node_id = node_id
 
 
 class Renderer:
@@ -25,7 +28,7 @@ class Renderer:
     async def render_preview(
         self,
         graph: Graph,
-        progress_callback: Optional[Callable[[str], None]] = None
+        progress_callback: Optional[ProgressCallback] = None
     ) -> tuple[Path, str]:
         """
         Render graph for preview (low quality, fast).
@@ -52,7 +55,7 @@ class Renderer:
         graph: Graph,
         quality: str = "1080p",
         fps: int = 30,
-        progress_callback: Optional[Callable[[str], None]] = None
+        progress_callback: Optional[ProgressCallback] = None
     ) -> tuple[Path, str]:
         """
         Render graph for export (high quality).
@@ -89,7 +92,7 @@ class Renderer:
         graph: Graph,
         quality: str,
         fps: int,
-        progress_callback: Optional[Callable[[str], None]] = None
+        progress_callback: Optional[ProgressCallback] = None
     ) -> tuple[Path, str]:
         """
         Internal method to render graph.
@@ -107,9 +110,16 @@ class Renderer:
             RenderError if rendering fails
         """
         # Generate Python code
+        var_to_node_id: Dict[str, str] = {}
         try:
             generator = CodeGenerator(graph)
             python_code = generator.generate()
+            var_to_node_id = generator.var_to_node_id
+        except ValidationError as e:
+            raise RenderError(
+                f"Code generation failed: {str(e)}",
+                node_id=e.node_id,
+            )
         except Exception as e:
             raise RenderError(f"Code generation failed: {str(e)}")
 
@@ -142,7 +152,7 @@ class Renderer:
             ]
 
             if progress_callback:
-                progress_callback("Starting render...")
+                await progress_callback("Starting render...")
 
             # Run manim command
             # Ensure /Library/TeX/texbin is on PATH so dvisvgm can find TeX resources
@@ -158,7 +168,22 @@ class Renderer:
                 env=env,
             )
 
-            # Stream output
+            # Stream stdout and stderr concurrently
+            stderr_lines: list[str] = []
+
+            async def read_stderr():
+                while True:
+                    line = await process.stderr.readline()
+                    if not line:
+                        break
+                    line_str = line.decode().strip()
+                    if line_str:
+                        stderr_lines.append(line_str)
+                        if progress_callback:
+                            await progress_callback(line_str)
+
+            stderr_task = asyncio.create_task(read_stderr())
+
             while True:
                 line = await process.stdout.readline()
                 if not line:
@@ -166,15 +191,22 @@ class Renderer:
 
                 line_str = line.decode().strip()
                 if progress_callback and line_str:
-                    progress_callback(line_str)
+                    await progress_callback(line_str)
+
+            await stderr_task
 
             # Wait for completion
             await process.wait()
 
             if process.returncode != 0:
-                stderr = await process.stderr.read()
-                error_msg = stderr.decode()
-                raise RenderError(f"Manim rendering failed:\n{error_msg}", code=python_code)
+                error_msg = "\n".join(stderr_lines)
+                # Try to identify which node caused the error
+                error_node_id = self._find_error_node(error_msg, var_to_node_id)
+                raise RenderError(
+                    f"Manim rendering failed:\n{error_msg}",
+                    code=python_code,
+                    node_id=error_node_id,
+                )
 
             # Find output video file
             # Manim outputs to media/videos/[filename]/[quality]/[scene].mp4
@@ -202,14 +234,26 @@ class Renderer:
                 pass
 
 
+    def _find_error_node(self, error_msg: str, var_to_node_id: Dict[str, str]) -> Optional[str]:
+        """Try to identify the node that caused a rendering error by matching variable names."""
+        if not var_to_node_id:
+            return None
+        # Sort by longest var name first to avoid partial matches
+        for var_name in sorted(var_to_node_id.keys(), key=len, reverse=True):
+            if var_name in error_msg:
+                return var_to_node_id[var_name]
+        return None
+
+
 class ExportJob:
     """Represents an export job"""
 
-    def __init__(self, job_id: str, graph: Graph, quality: str, fps: int):
+    def __init__(self, job_id: str, graph: Graph, quality: str, fps: int, format: str = "mp4"):
         self.job_id = job_id
         self.graph = graph
         self.quality = quality
         self.fps = fps
+        self.format = format
         self.status = "pending"  # pending, running, completed, failed
         self.progress = 0.0
         self.error: Optional[str] = None
@@ -229,7 +273,7 @@ class ExportQueue:
         self.renderer = renderer
         self.jobs: dict[str, ExportJob] = {}
 
-    def create_job(self, graph: Graph, quality: str = "1080p", fps: int = 30) -> str:
+    def create_job(self, graph: Graph, quality: str = "1080p", fps: int = 30, format: str = "mp4") -> str:
         """
         Create a new export job.
 
@@ -237,13 +281,14 @@ class ExportQueue:
             graph: Graph to export
             quality: Quality preset
             fps: Frames per second
+            format: Output format (mp4 or gif)
 
         Returns:
             Job ID
         """
         import uuid
         job_id = str(uuid.uuid4())
-        job = ExportJob(job_id, graph, quality, fps)
+        job = ExportJob(job_id, graph, quality, fps, format)
         self.jobs[job_id] = job
 
         # Start job in background
@@ -262,16 +307,37 @@ class ExportQueue:
 
         try:
             # Render
+            async def log_progress(msg: str):
+                job.add_log(msg)
+
             output_file, _ = await self.renderer.render_export(
                 graph=job.graph,
                 quality=job.quality,
                 fps=job.fps,
-                progress_callback=lambda msg: job.add_log(msg)
+                progress_callback=log_progress
             )
 
-            # Move to exports directory
-            final_path = self.storage.exports_dir / f"{job.job_id}.mp4"
-            output_file.rename(final_path)
+            if job.format == "gif":
+                # Convert MP4 to GIF using ffmpeg with palette for quality
+                job.add_log("Converting to GIF...")
+                gif_path = output_file.with_suffix('.gif')
+                process = await asyncio.create_subprocess_exec(
+                    'ffmpeg', '-y', '-i', str(output_file),
+                    '-filter_complex', f'fps={job.fps},scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse',
+                    '-loop', '0',
+                    str(gif_path),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await process.communicate()
+                if process.returncode != 0:
+                    raise Exception(f"GIF conversion failed: {stderr.decode()}")
+                final_path = self.storage.exports_dir / f"{job.job_id}.gif"
+                gif_path.rename(final_path)
+            else:
+                # Move MP4 to exports directory
+                final_path = self.storage.exports_dir / f"{job.job_id}.mp4"
+                output_file.rename(final_path)
 
             job.output_file = final_path
             job.status = "completed"

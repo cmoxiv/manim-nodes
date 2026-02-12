@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Plus, Zap, Frame } from 'lucide-react';
 import { apiClient } from '../../api/client';
 import { NodeDefinition } from '../../types/graph';
 import { useGraphStore } from '../../store/useGraphStore';
@@ -75,6 +75,33 @@ export default function NodePalette() {
       });
     }
     return defaults;
+  };
+
+  // Scan canvas for FunctionDef nodes to show in "Custom Functions" category
+  const customFunctions = useMemo(() => {
+    return existingNodes
+      .filter((n) => n.data.type === 'FunctionDef' && n.data.func_name)
+      .map((n) => ({
+        funcName: n.data.func_name as string,
+        nodeId: n.id,
+      }));
+  }, [existingNodes]);
+
+  const handleAddFunctionCall = (funcName: string) => {
+    const newNode = {
+      id: `node-${crypto.randomUUID()}`,
+      type: 'custom',
+      position: { x: 250, y: 250 },
+      data: {
+        type: 'FunctionCall',
+        category: 'Utilities',
+        inputs: { arg_1: 'Any', arg_2: 'Any' },
+        outputs: { out_1: 'Any', out_2: 'Any' },
+        name: generateNodeName('FunctionCall'),
+        func_name: funcName,
+      },
+    };
+    addNode(newNode);
   };
 
   // Category order
@@ -159,8 +186,13 @@ export default function NodePalette() {
                 {categoryNodes.map((node) => (
                   <button
                     key={node.type}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/manim-node', JSON.stringify(node));
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
                     onClick={() => handleAddNode(node)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded text-left text-sm text-white transition-colors bg-gray-700 hover:bg-gray-600"
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded text-left text-sm text-white transition-colors bg-gray-700 hover:bg-gray-600 cursor-grab active:cursor-grabbing"
                   >
                     <Plus size={16} />
                     <span>{node.displayName}</span>
@@ -171,7 +203,64 @@ export default function NodePalette() {
           );
         })}
 
-        {sortedCategories.length === 0 && (
+        {/* Layout */}
+        {(!searchTerm || 'frame layout group'.includes(searchTerm.toLowerCase())) && (
+          <div>
+            <h3 className="text-sm font-semibold mb-2 text-gray-400">
+              Layout
+            </h3>
+            <div className="space-y-1">
+              <button
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(
+                    'application/manim-node',
+                    JSON.stringify({ type: '__groupFrame' })
+                  );
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onClick={() => {
+                  const count = existingNodes.filter((n) => n.type === 'groupFrame').length;
+                  addNode({
+                    id: `frame-${crypto.randomUUID()}`,
+                    type: 'groupFrame',
+                    position: { x: 250, y: 250 },
+                    style: { width: 400, height: 300 },
+                    data: { label: `Frame ${count + 1}`, width: 400, height: 300 },
+                    zIndex: -1,
+                  } as any);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded text-left text-sm text-white transition-colors bg-gray-700 hover:bg-gray-600 cursor-grab active:cursor-grabbing"
+              >
+                <Frame size={16} />
+                <span>Frame</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Functions from FunctionDef nodes */}
+        {customFunctions.length > 0 && (!searchTerm || 'custom functions'.includes(searchTerm.toLowerCase())) && (
+          <div>
+            <h3 className="text-sm font-semibold mb-2 text-purple-400">
+              Custom Functions
+            </h3>
+            <div className="space-y-1">
+              {customFunctions.map((fn) => (
+                <button
+                  key={fn.nodeId}
+                  onClick={() => handleAddFunctionCall(fn.funcName)}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded text-left text-sm text-white transition-colors bg-purple-900/30 hover:bg-purple-800/40 border border-purple-700/30"
+                >
+                  <Zap size={16} className="text-purple-400" />
+                  <span>{fn.funcName}()</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {sortedCategories.length === 0 && customFunctions.length === 0 && (
           <div className="text-center text-gray-500 py-8">
             No nodes found
           </div>

@@ -13,6 +13,7 @@ class ExportRequest(BaseModel):
     graph: Graph
     quality: str = Field(default="1080p", pattern="^(480p|720p|1080p|1440p|2160p)$")
     fps: int = Field(default=30, ge=15, le=60)
+    format: str = Field(default="mp4", pattern="^(mp4|gif)$")
 
 
 class ExportStatus(BaseModel):
@@ -32,7 +33,8 @@ async def start_export(request: ExportRequest, export_queue: ExportQueue = Depen
         job_id = export_queue.create_job(
             graph=request.graph,
             quality=request.quality,
-            fps=request.fps
+            fps=request.fps,
+            format=request.format,
         )
 
         return {
@@ -79,8 +81,12 @@ async def download_export(job_id: str, export_queue: ExportQueue = Depends(get_e
     if not job.output_file or not job.output_file.exists():
         raise HTTPException(status_code=404, detail="Output file not found")
 
+    is_gif = str(job.output_file).endswith('.gif')
+    media_type = "image/gif" if is_gif else "video/mp4"
+    ext = "gif" if is_gif else "mp4"
+
     return FileResponse(
         path=str(job.output_file),
-        media_type="video/mp4",
-        filename=f"animation_{job_id}.mp4"
+        media_type=media_type,
+        filename=f"animation_{job_id}.{ext}"
     )

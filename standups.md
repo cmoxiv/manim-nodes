@@ -233,3 +233,65 @@ Major session focused on the TransformInPlace node and the Pythagorean Theorem r
 - Add more example graphs to the examples library
 - Implement keyboard shortcuts (Ctrl+S, Delete, Esc)
 - Address remaining security items from code review
+
+## 2026-02-12 10:00
+
+**Branch:** main
+
+### Completed
+- Expanded animation node library with 20+ new types: creation (Uncreate, Unwrite, DrawBorderThenFill, SpiralIn), growing (GrowFromCenter/Point/Edge, GrowArrow, SpinInFromNothing), indication (Indicate, Flash, Circumscribe, Wiggle, ApplyWave, FocusOn), transform (FadeMorph, MorphMatchingShapes, FadeToColor)
+- Added new shape nodes: RightTriangle, IsoscelesTriangle, RegularPolygon, LineLabel
+- Implemented full vector/matrix math operations suite (Vec3Add/Cross/Dot, MatrixMultiply/Inverse/Transform)
+- Added FunctionDef/FunctionCall and PythonCode utility nodes for code injection
+- Overhauled code generator: junction resolution, variable deduplication, multi-output handling, `var_to_node_id` error tracking (~480 lines added)
+- Implemented error node identification: backend maps MANIM errors to specific node IDs, frontend highlights offending nodes with red borders
+- Built Group Frames (GroupFrameNode): visual-only container nodes with drag-to-attach, resize, and editable titles
+- Added Debug Panel: bottom panel with render logs and auto-scrolling log viewer
+- Implemented edge cutting with Shift+drag (line segment intersection detection)
+- Added drag-and-drop .json graph file import onto canvas
+- Enhanced handle styling per data type: blue circles (Mobject), purple triangles (Animation), teal diamonds (Number), teal triangles (Vec3), pink circles (Color)
+- Added viewport persistence (saves/restores zoom/pan per graph)
+- Added node duplication support
+- Added `html-to-image` dependency (graph export/screenshot)
+- Enhanced graph validator: frame node support, flexible optional input rules, better error messages
+- Added `/api/graphs/{id}/objects` endpoint for cross-graph object listing
+
+### In Progress
+- 32 files modified + 2 new files across backend and frontend (uncommitted on main)
+
+### Blockers
+- None
+
+### Next Steps
+- Commit current batch of changes
+- Test new animation nodes end-to-end with MANIM rendering
+- Add example graphs showcasing new animation types (indication, growing)
+- Keyboard shortcuts (Ctrl+S save, Delete node, Esc deselect)
+- Address remaining security items (input sanitization, CORS, rate limiting)
+
+## Session Wrap-up - 2026-02-12
+
+**Date:** 2026-02-12
+
+### What Got Done
+
+**New Examples:**
+- Built **2D Parametric Curves** example with NumberPlane, ZoomCamera, two ParametricFunction curves (t sin 2t, cos(t-pi)-t), Dots with MoveAlongPath, and AnimationGroup
+- Built **3D Parametric Curves** example extending the 2D version with Axes3D, NumberPlane, and SetCameraOrientation
+- Built **Lorenz Attractor** example with Euler-integrated Lorenz system cached on numpy, live-plotted with Write presentation, dual camera orientations for rotation effect
+- Organized all parametric/Lorenz examples with `__groupFrame` nodes for visual clarity
+
+**Group Frame Fixes:**
+- Fixed nodes unable to detach from frames by removing `extent: 'parent'` constraint across 5 frontend files and all backend examples
+- Fixed frame resize handle grabbing the frame instead of resizing (added `nodrag` CSS class)
+- Added 15px grid snapping to frame resize logic
+
+**README & Documentation:**
+- Rewrote README with accurate feature list (122 node types), full node type table, architecture diagram, and data flow explanation
+- Created `scripts/export_example_gifs.py` to render all 6 examples as palette-optimized GIFs via manim + ffmpeg
+- Successfully exported all 6 example GIFs (basic_shapes, pythagorean, parametric2d, parametric3d, lorenz, sqrt2) into `docs/examples/`
+- Renamed parametric examples from "fourier" to "parametric2d"/"parametric3d" across IDs, filenames, and README references
+
+### Summary
+
+Built three new example graphs (2D/3D parametric curves, Lorenz attractor), fixed multiple group frame UX issues (detach, resize, snap), and created a complete README with GIF previews of all 6 built-in examples exported via an automated rendering pipeline.

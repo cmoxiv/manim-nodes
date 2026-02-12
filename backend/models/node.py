@@ -8,6 +8,10 @@ class NodeData(BaseModel):
     type: str
     position: Dict[str, float]
     data: Dict[str, Any]
+    parentNode: str | None = None
+    extent: str | None = None
+    style: Dict[str, Any] | None = None
+    zIndex: int | None = None
 
     class Config:
         json_schema_extra = {

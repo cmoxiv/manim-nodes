@@ -52,6 +52,10 @@ class GraphValidator:
 
     def _validate_node(self, node):
         """Validate a single node"""
+        # Skip frame nodes — they are visual-only (frontend grouping)
+        if node.type == "__groupFrame":
+            return
+
         # Check if node type exists
         if node.type not in NODE_REGISTRY:
             self.errors.append((node.id, f"Unknown node type: {node.type}"))
@@ -70,15 +74,27 @@ class GraphValidator:
         if required_inputs:
             connected_inputs = self._get_connected_inputs(node.id)
 
+            # Check if node is completely isolated (no edges at all)
+            is_isolated = not any(
+                e.source == node.id or e.target == node.id
+                for e in self.graph.edges
+            )
+
+            # Skip validation for isolated nodes that require connections
+            if is_isolated and node.type in ("Sequence", "AnimationGroup", "Junction"):
+                pass  # Ignore — user hasn't wired it yet
+            elif is_isolated and node.type not in NODE_REGISTRY:
+                pass
+            elif is_isolated and self._is_animation_node(node.type):
+                pass  # Isolated animation node — ignore
+
             # Special case: Sequence node inputs are optional
-            if node.type == "Sequence":
-                # At least one animation must be connected
+            elif node.type == "Sequence":
                 anim_inputs = {i for i in connected_inputs if i.startswith('anim')}
                 if not anim_inputs:
                     self.errors.append((node.id, "Sequence node needs at least one animation connected"))
             # Special case: AnimationGroup node inputs are optional
             elif node.type == "AnimationGroup":
-                # At least one animation must be connected
                 anim_inputs = {i for i in connected_inputs if i.startswith('anim')}
                 if not anim_inputs:
                     self.errors.append((node.id, "AnimationGroup node needs at least one animation connected"))
@@ -107,6 +123,18 @@ class GraphValidator:
                         continue
                     if input_name not in connected_inputs:
                         self.errors.append((node.id, f"Missing required input: {input_name}"))
+
+    def _is_animation_node(self, node_type: str) -> bool:
+        """Check if a node type is an animation node (has mobject/source input)"""
+        node_class = NODE_REGISTRY.get(node_type)
+        if not node_class:
+            return False
+        try:
+            instance = node_class()
+            inputs = instance.get_inputs()
+            return "mobject" in inputs or "source" in inputs
+        except Exception:
+            return False
 
     def _validate_connections(self):
         """Validate edge connections"""
@@ -172,6 +200,10 @@ class GraphValidator:
         """Check if source type can connect to target type"""
         # Exact match
         if source_type == target_type:
+            return True
+
+        # "Any" is universally compatible (e.g. Junction pass-through)
+        if source_type == "Any" or target_type == "Any":
             return True
 
         # Type hierarchy for compatibility checking

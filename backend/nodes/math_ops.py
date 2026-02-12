@@ -110,6 +110,78 @@ class Vec3Node(NodeBase):
         return "Math Ops"
 
 
+class _ConstVecNode(NodeBase):
+    """Base for constant vector nodes (Manim built-ins). No code generated."""
+
+    # Subclasses set these
+    _const_name: str = ""
+    _values: str = ""
+
+    def to_manim_code(self, var_name: str) -> str:
+        return ""  # No code needed — references Manim built-in constant
+
+    def get_inputs(self) -> Dict[str, str]:
+        return {}
+
+    def get_outputs(self) -> Dict[str, str]:
+        return {"vector": "Vec3"}
+
+    @classmethod
+    def get_category(cls) -> str:
+        return "Math Ops"
+
+
+class RightNode(_ConstVecNode):
+    """RIGHT → [1, 0, 0]"""
+    _const_name: str = "RIGHT"
+    _values: str = "1, 0, 0"
+
+class LeftNode(_ConstVecNode):
+    """LEFT → [-1, 0, 0]"""
+    _const_name: str = "LEFT"
+    _values: str = "-1, 0, 0"
+
+class UpNode(_ConstVecNode):
+    """UP → [0, 1, 0]"""
+    _const_name: str = "UP"
+    _values: str = "0, 1, 0"
+
+class DownNode(_ConstVecNode):
+    """DOWN → [0, -1, 0]"""
+    _const_name: str = "DOWN"
+    _values: str = "0, -1, 0"
+
+class OutNode(_ConstVecNode):
+    """OUT → [0, 0, 1]"""
+    _const_name: str = "OUT"
+    _values: str = "0, 0, 1"
+
+class InNode(_ConstVecNode):
+    """IN → [0, 0, -1]"""
+    _const_name: str = "IN"
+    _values: str = "0, 0, -1"
+
+class OriginNode(_ConstVecNode):
+    """ORIGIN → [0, 0, 0]"""
+    _const_name: str = "ORIGIN"
+    _values: str = "0, 0, 0"
+
+class XNode(_ConstVecNode):
+    """X → [1, 0, 0] (same as RIGHT)"""
+    _const_name: str = "RIGHT"
+    _values: str = "1, 0, 0"
+
+class YNode(_ConstVecNode):
+    """Y → [0, 1, 0] (same as UP)"""
+    _const_name: str = "UP"
+    _values: str = "0, 1, 0"
+
+class ZNode(_ConstVecNode):
+    """Z → [0, 0, 1] (same as OUT)"""
+    _const_name: str = "OUT"
+    _values: str = "0, 0, 1"
+
+
 class Vec3SplitNode(NodeBase):
     """Split a Vec3 into three separate Number values (X, Y, Z)"""
 
