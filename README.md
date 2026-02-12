@@ -7,7 +7,10 @@ A visual node-based editor for creating [MANIM](https://www.manim.community/) an
 ### Basic Shapes
 Circle, Square, and Text with a FadeIn / Write sequence.
 
-![Basic Shapes](docs/examples/basic_shapes.gif)
+<table><tr>
+<td><img src="docs/examples/basic_shapes_graph.jpg" alt="Basic Shapes Graph" width="500"></td>
+<td><img src="docs/examples/basic_shapes.gif" alt="Basic Shapes" width="400"></td>
+</tr></table>
 
 ### Pythagorean Theorem
 Animated rearrangement proof of a^2 + b^2 = c^2 with labeled triangles and edge squares.
@@ -22,12 +25,18 @@ Two parametric curves (t sin 2t, cos(t-pi)-t) drawn with Write, then traced by a
 ### 3D Parametric Curves
 The same parametric curves lifted into 3D with Axes3D, NumberPlane, and camera orientation.
 
-![3D Parametric Curves](docs/examples/parametric3d.gif)
+<table><tr>
+<td><img src="docs/examples/parametric3d_graph.jpg" alt="3D Parametric Graph" width="500"></td>
+<td><img src="docs/examples/parametric3d.gif" alt="3D Parametric Curves" width="400"></td>
+</tr></table>
 
 ### Lorenz Attractor
 Live-plotted Lorenz strange attractor in 3D with rotating camera.
 
-![Lorenz Attractor](docs/examples/lorenz.gif)
+<table><tr>
+<td><img src="docs/examples/lorenz_graph.jpg" alt="Lorenz Graph" width="500"></td>
+<td><img src="docs/examples/lorenz.gif" alt="Lorenz Attractor" width="400"></td>
+</tr></table>
 
 ### Square Root of 2 Construction
 Euclidean construction of sqrt(2) as the diagonal of a unit square, with the Pythagorean identity.
