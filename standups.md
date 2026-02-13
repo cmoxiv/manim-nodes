@@ -295,3 +295,17 @@ Major session focused on the TransformInPlace node and the Pythagorean Theorem r
 ### Summary
 
 Built three new example graphs (2D/3D parametric curves, Lorenz attractor), fixed multiple group frame UX issues (detach, resize, snap), and created a complete README with GIF previews of all 6 built-in examples exported via an automated rendering pipeline.
+
+## Session Wrap-up - 2026-02-13
+
+**Date:** 2026-02-13
+
+### What Got Done
+
+- Added graph screenshots to README for **Basic Shapes**, **Lorenz Attractor**, and **3D Parametric Curves** examples
+- Placed node editor screenshots side-by-side with animation GIFs using HTML tables
+- Copied and organized 3 screenshot assets into `docs/examples/` (`basic_shapes_graph.jpg`, `lorenz_graph.jpg`, `parametric3d_graph.jpg`)
+
+### Summary
+
+Enhanced the README with visual context by adding node graph screenshots alongside animation GIFs for three examples, showing users both the visual programming interface and the rendered output side by side.
