@@ -554,8 +554,31 @@ export default function TopBar() {
         <Download size={16} />
         Export Video
       </button>
+      <a
+        href="/api/export/latest/download"
+        download
+        className="flex items-center px-2 py-2 bg-green-600 hover:bg-green-700 text-white text-sm border-l border-green-500 transition-colors"
+        title="Download latest export"
+      >
+        <FileDown size={16} />
+      </a>
       <button
-        onClick={() => fetch('/api/open-folder/exports', { method: 'POST' })}
+        onClick={async () => {
+          const res = await fetch('/api/open-folder/exports', { method: 'POST' });
+          const data = await res.json();
+          if (data.path && !data.native) {
+            try {
+              await fetch('http://127.0.0.1:8001', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: data.path }),
+              });
+            } catch {
+              await navigator.clipboard.writeText(data.path);
+              alert(`Could not open folder (is folder-opener running?).\nPath copied to clipboard:\n${data.path}`);
+            }
+          }
+        }}
         className="flex items-center px-2 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-r border-l border-green-500 transition-colors"
         title="Open exports folder"
       >

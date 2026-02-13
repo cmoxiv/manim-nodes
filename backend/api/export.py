@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from ..models.graph import Graph
 from ..core.renderer import ExportQueue
+from ..core.storage import StorageManager
 from .dependencies import get_export_queue
 
 router = APIRouter(prefix="/api/export", tags=["export"])
@@ -43,6 +44,29 @@ async def start_export(request: ExportRequest, export_queue: ExportQueue = Depen
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/latest/download")
+async def download_latest_export(request: Request):
+    """Download the most recently exported file"""
+    storage: StorageManager = request.app.state.storage
+    exports = sorted(
+        storage.exports_dir.glob("*.*"),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+    if not exports:
+        raise HTTPException(status_code=404, detail="No exports found")
+
+    latest = exports[0]
+    is_gif = latest.suffix == ".gif"
+    media_type = "image/gif" if is_gif else "video/mp4"
+
+    return FileResponse(
+        path=str(latest),
+        media_type=media_type,
+        filename=latest.name,
+    )
 
 
 @router.get("/{job_id}", response_model=ExportStatus)

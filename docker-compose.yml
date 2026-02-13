@@ -1,4 +1,4 @@
-version: '3.8'
+# version: '3.8'
 
 services:
   manim-nodes:
@@ -7,14 +7,12 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/app/data
-      - ./exports:/app/exports
+      - ./data:/root/manim-nodes
     environment:
-      - DATA_DIR=/app/data
-      - EXPORT_DIR=/app/exports
+      - HOST_DATA_DIR=${PWD}/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

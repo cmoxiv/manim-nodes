@@ -309,3 +309,36 @@ Built three new example graphs (2D/3D parametric curves, Lorenz attractor), fixe
 ### Summary
 
 Enhanced the README with visual context by adding node graph screenshots alongside animation GIFs for three examples, showing users both the visual programming interface and the rendered output side by side.
+
+## Session Wrap-up - 2026-02-13 (session 2)
+
+**Date:** 2026-02-13
+
+### What Got Done
+
+- Fixed Docker build failure by adding C compiler and Cairo dev libraries (`gcc`, `g++`, `pkg-config`, `libcairo2-dev`, `libpango1.0-dev`) to Dockerfile for `pycairo`/manim compilation
+- Fixed Docker healthcheck — replaced `curl` (not available in `python:3.10-slim`) with Python `urllib.request` one-liner
+- Added frontend serving to backend — root `/` now returns `index.html`, `/assets` serves Vite-built bundles, and a catch-all route handles SPA client-side routing
+- Container builds and runs successfully with healthy status on `http://localhost:8000`
+
+### Summary
+
+Fixed three issues blocking Docker deployment: a missing C toolchain for pycairo compilation, a broken healthcheck, and the backend not serving the frontend SPA — making `docker-compose up -d --build` fully functional end-to-end.
+
+## Session Wrap-up - 2026-02-13 (session 3)
+
+**Date:** 2026-02-13
+
+### What Got Done
+
+- Fixed Docker volume mapping — `./data` now correctly mounts to `/root/manim-nodes` where the app actually stores data, removed unused `./exports` volume and `DATA_DIR`/`EXPORT_DIR` env vars
+- Built **folder-opener helper** (`scripts/folder-opener.py`) — tiny host-side HTTP service that receives requests from the Docker-hosted frontend and opens local folders in Finder
+- Added `HOST_DATA_DIR` env var to docker-compose so the backend maps container paths to host paths for the folder-open buttons
+- Frontend folder buttons now call the host helper (port 8001) when in Docker, with clipboard fallback if the helper isn't running
+- Created **local dev startup script** (`scripts/start-local.sh`) — starts backend + frontend in background with log files, opens browser, supports `start`/`stop`/`logs` subcommands
+- Added **"Download Latest Export"** button to the export button group in TopBar, with new `/api/export/latest/download` backend endpoint
+- Updated README with Docker folder-opener docs, troubleshooting entry, and export feature description
+
+### Summary
+
+Completed Docker deployment polish (volume mapping, folder access, host helper) and local development tooling (background startup script with log management), plus added a one-click download button for the latest export.

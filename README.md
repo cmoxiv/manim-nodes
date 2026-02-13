@@ -49,7 +49,7 @@ Euclidean construction of sqrt(2) as the diagonal of a unit square, with the Pyt
 - **Live Preview** — Real-time animation preview via WebSocket
 - **122 Node Types** — Shapes, animations, math, 3D, camera, vector/matrix ops, and utilities
 - **Auto-Save** — Automatic graph persistence with dirty-state tracking
-- **Export** — High-quality video export (480p to 4K, 15-60fps, MP4/GIF)
+- **Export** — High-quality video export (480p to 4K, 15-60fps, MP4/GIF) with one-click download
 - **3D Support** — 3D shapes, Axes3D, camera orientation and movement
 - **Frames** — Resizable group frames for organising complex graphs
 - **Docker** — One-command deployment with Docker Compose
@@ -60,8 +60,11 @@ Euclidean construction of sqrt(2) as the diagonal of a unit square, with the Pyt
 
 ```bash
 docker-compose up -d
+python3 scripts/folder-opener.py &   # optional: enables "Open Folder" buttons
 open http://localhost:8000
 ```
+
+The folder-opener is a tiny host-side helper that lets the app open local folders (exports, previews) in Finder. Without it, the buttons fall back to copying the path to your clipboard.
 
 ### Manual Setup
 
@@ -123,7 +126,7 @@ manim-nodes/
 │   │   ├── api/         # REST client
 │   │   └── websocket/   # Preview WebSocket
 │   └── package.json
-├── scripts/             # GIF export and utilities
+├── scripts/             # GIF export, folder-opener helper
 ├── Dockerfile
 └── docker-compose.yml
 ```
@@ -173,6 +176,7 @@ Renders all built-in examples as GIFs into `docs/examples/`.
 | Video rendering fails | Check `ffmpeg -version` and `latex --version` |
 | WebSocket won't connect | Verify backend is running: `curl http://localhost:8000/health` |
 | Slow preview | Preview uses 480p 15fps by default; complex scenes take longer |
+| "Open Folder" buttons don't work (Docker) | Run `python3 scripts/folder-opener.py` on the host |
 
 ## License
 

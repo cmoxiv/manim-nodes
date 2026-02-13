@@ -136,7 +136,22 @@ export default function AnimationPreview() {
             <Download size={16} className="text-white" />
           </a>
           <button
-            onClick={() => fetch('/api/open-folder/previews', { method: 'POST' })}
+            onClick={async () => {
+              const res = await fetch('/api/open-folder/previews', { method: 'POST' });
+              const data = await res.json();
+              if (data.path && !data.native) {
+                try {
+                  await fetch('http://127.0.0.1:8001', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: data.path }),
+                  });
+                } catch {
+                  await navigator.clipboard.writeText(data.path);
+                  alert(`Could not open folder (is folder-opener running?).\nPath copied to clipboard:\n${data.path}`);
+                }
+              }
+            }}
             className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
             title="Open previews folder"
           >

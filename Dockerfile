@@ -14,9 +14,14 @@ RUN npm run build
 # Stage 2: Backend with MANIM
 FROM python:3.10-slim
 
-# Install system dependencies
+# Install system dependencies (including build tools for pycairo/manim)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    gcc \
+    g++ \
+    pkg-config \
+    libcairo2-dev \
+    libpango1.0-dev \
     texlive \
     texlive-latex-extra \
     texlive-fonts-extra \
